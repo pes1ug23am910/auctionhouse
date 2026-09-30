@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -94,6 +95,31 @@ def key_numbers(path, allowed=None):
     return result
 
 
+def container_sample(env, container_ids):
+    if not container_ids or len(set(container_ids)) != len(container_ids) or not all(re.fullmatch(r"[0-9a-f]{64}", value) for value in container_ids):
+        raise ValueError("Refusing unscoped or invalid Docker resource targets")
+    load = command(["docker", "inspect", "--format", "{{if .State.Running}}{{.Id}}{{end}}", env["COMPOSE_PROJECT_NAME"] + "-load"], timeout=3, check=False)
+    load_id = load.stdout.strip() if load.returncode == 0 else ""
+    targets = container_ids + ([load_id] if load_id else [])
+    stats = command(["docker", "stats", "--no-stream", "--format", "{{json .}}", *targets], timeout=5, check=False)
+    observations = [json.loads(line) for line in stats.stdout.splitlines() if line]
+    observed = [item.get("Container") for item in observations]
+    if len(set(observed)) != len(observed) or not set(container_ids).issubset(observed) or not set(observed).issubset(targets):
+        raise ValueError("Missing dependency or unowned container resource samples")
+    return {"containers": observations, "loadContainerRunningAtLookup": bool(load_id)}
+
+
+def validate_owned_dependencies(records, project):
+    if len(records) != len(SERVICES) or {item.get("service") for item in records} != set(SERVICES):
+        raise ValueError("Expected exactly the declared dependency services")
+    ids = [item.get("id", "") for item in records]
+    if len(set(ids)) != len(ids) or not all(re.fullmatch(r"[0-9a-f]{64}", value) for value in ids):
+        raise ValueError("Invalid or duplicate dependency identities")
+    if not all(item.get("project") == project and item.get("running") is True for item in records):
+        raise ValueError("Dependency ownership or running-state mismatch")
+    return ids
+
+
 def sample_resources(stop, path, pid, env, container_ids):
     started = time.monotonic()
     iteration = 0
@@ -109,13 +135,7 @@ def sample_resources(stop, path, pid, env, container_ids):
                 pg = command([*COMPOSE, "exec", "-T", "postgres", "psql", "-U", "auctionhouse", "-d", "auctionhouse", "-At", "-v", "ON_ERROR_STOP=1", "-c", PG_SAMPLE], env=env, timeout=4)
                 row["postgres"] = json.loads(pg.stdout)
                 if iteration % 5 == 0:
-                    load = command(["docker", "inspect", "--format", "{{.Id}}", env["COMPOSE_PROJECT_NAME"] + "-load"], timeout=3, check=False)
-                    targets = container_ids + ([load.stdout.strip()] if load.returncode == 0 else [])
-                    stats = command(["docker", "stats", "--no-stream", "--format", "{{json .}}", *targets], timeout=5, check=False)
-                    row["containers"] = [json.loads(line) for line in stats.stdout.splitlines() if line]
-                    row["loadContainerPresentAtLookup"] = load.returncode == 0
-                    if not row["containers"]:
-                        raise ValueError("No owned container resource samples")
+                    row.update(container_sample(env, container_ids))
             except Exception as error:
                 row["errors"].append(type(error).__name__ + ": " + str(error)[:240])
             stream.write(json.dumps(row, allow_nan=False) + "\n")
@@ -132,7 +152,8 @@ def run_load(output, rate, duration, label, env):
         "Image": K6, "Rate": rate, "DurationSeconds": duration, "Seed": 42,
         "PreallocatedVUs": 40, "MaxVUs": 80, "ContainerMemoryMiB": 256, "ContainerCPUs": 1,
         "BaseURL": "http://127.0.0.1:8080", "ScriptSHA256": sha(ROOT / "experiments/load/k6-workload.js")})
-    args = ["docker", "run", "--rm", "--name", env["COMPOSE_PROJECT_NAME"] + "-load", "--network", "host",
+    # Keep the stopped container until the resource sampler has joined; --rm races docker stats.
+    args = ["docker", "run", "--name", env["COMPOSE_PROJECT_NAME"] + "-load", "--network", "host",
         "--memory=256m", "--cpus=1", "-e", "AUCTIONHOUSE_DEMO_PASSWORD", "-e", "AUTH_MODE=local-demo",
         "-e", "BASE_URL=http://127.0.0.1:8080", "-e", f"RATE={rate}", "-e", f"DURATION_SECONDS={duration}",
         "-e", "PREALLOCATED_VUS=40", "-e", "MAX_VUS=80", "-e", "SEED=42", "-e", f"COMPARISON_LABEL={label}",
@@ -160,15 +181,31 @@ def export_jfr(recording, output):
     unexpected = {name: count for name, count in recorded.items() if count and name not in EVENTS and name not in ("jdk.Checkpoint", "jdk.Metadata")}
     if unexpected or not recorded:
         raise RuntimeError("JFR contains unapproved event types or no event inventory")
-    exported = command(["jfr", "print", "--json", "--stack-depth", "24", "--events", ",".join(EVENTS), str(recording)], timeout=90).stdout
-    if len(exported.encode("utf-8")) > 64 * 1024 * 1024:
-        raise RuntimeError("Selected JFR export exceeds the 64 MiB report bound")
-    document = json.loads(exported)
+    projected = recording.with_suffix(".selected.jsonl")
+    command(["java", "-Xmx128m", str(ROOT / "experiments/profile/ProfileEvents.java"), str(recording), str(projected)], timeout=90)
+    document = {"recording": {"events": [json.loads(line) for line in projected.read_text(encoding="utf-8").splitlines()]}}
     report = jfr_report(document)
     write_json(output / "jfr-summary.json", {"recordedEventCounts": recorded, **report})
     # Never upload the raw recording: even disabled event types have metadata in JFR files.
     write_gzip_json(output / "selected-jfr-events.json.gz", document)
     return report
+
+
+def update_load_flags(result):
+    phases = [result.get(name) for name in ("warmup", "measurement")]
+    result["executionCompleted"] = all(phase and phase["executionCompleted"] for phase in phases)
+    result["oraclesPassed"] = all(phase and phase["reconciliation"]["passed"] and phase["oracleExitCode"] == 0 for phase in phases)
+    measured = result.get("measurement", {})
+    result["performanceTargetMet"] = measured.get("performanceTargetMet", False)
+    result["allPerformanceGatesMet"] = measured.get("allPerformanceGatesMet", False)
+
+
+def analyze_independently(tasks, result, env):
+    for name, analyze in tasks:
+        try:
+            result[name] = analyze()
+        except Exception as error:
+            result[name] = {"valid": False, "error": scrub(type(error).__name__ + ": " + str(error), env)}
 
 
 def variant(index, pool, output, private, jar, agent, base_env):
@@ -198,9 +235,14 @@ def variant(index, pool, output, private, jar, agent, base_env):
         if up.returncode:
             raise RuntimeError("Disposable dependency startup failed")
         ids = command([*COMPOSE, "ps", "-q"], env=env).stdout.split()
+        if not ids:
+            raise RuntimeError("Owned Compose dependency inventory is empty")
         # Selected immutable/runtime fields only; docker inspect includes secret environment values.
-        inspect = command(["docker", "inspect", "--format", '{{json .Id}} {{json .Image}} {{json .HostConfig.Memory}} {{json .HostConfig.NanoCpus}}', *ids]).stdout
-        (dest / "container-identities.txt").write_text(inspect, encoding="utf-8")
+        fields = '{"id":{{json .Id}},"image":{{json .Image}},"memoryBytes":{{json .HostConfig.Memory}},"nanoCpus":{{json .HostConfig.NanoCpus}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"running":{{json .State.Running}}}'
+        inspected = command(["docker", "inspect", "--format", fields, *ids]).stdout
+        inventory = [json.loads(line) for line in inspected.splitlines() if line]
+        ids = validate_owned_dependencies(inventory, env["COMPOSE_PROJECT_NAME"])
+        write_json(dest / "container-identities.json", inventory)
         logfile = (temp / "backend.log").open("w", encoding="utf-8")
         cpus = sorted(os.sched_getaffinity(0))[:2]
         if len(cpus) != 2:
@@ -213,6 +255,7 @@ def variant(index, pool, output, private, jar, agent, base_env):
         wait_url("http://127.0.0.1:8080/actuator/health/readiness", app)
         wait_url("http://127.0.0.1:9464/metrics", app)
         result["warmup"] = run_load(dest / "warmup", 50, 15, label + "-warmup", env)
+        command(["docker", "rm", env["COMPOSE_PROJECT_NAME"] + "-load"])
         time.sleep(7)  # Establish a pre-measurement cumulative acquisition snapshot.
         jfr = command(["jcmd", str(app.pid), "JFR.start", "name=measurement", f"settings={ROOT / 'experiments/profile/diagnostic.jfc'}",
                        f"filename={recording}", "maxsize=16m", "dumponexit=true"])
@@ -220,50 +263,60 @@ def variant(index, pool, output, private, jar, agent, base_env):
         monitor = threading.Thread(target=sample_resources, args=(stop, dest / "resources.jsonl", app.pid, env, ids), daemon=True)
         monitor.start()
         result["measurement"] = run_load(dest / "measured", 100, 45, label + "-measured", env)
+        update_load_flags(result)
         stop.set()
         monitor.join(timeout=15)
         if monitor.is_alive():
             raise RuntimeError("Resource sampler did not stop")
-        command(["jcmd", str(app.pid), "JFR.stop", "name=measurement", f"filename={recording}"])
-        result["jfr"] = export_jfr(recording, dest)
+        command(["docker", "rm", env["COMPOSE_PROJECT_NAME"] + "-load"])
+        def jfr_analysis():
+            command(["jcmd", str(app.pid), "JFR.stop", "name=measurement", f"filename={recording}"])
+            return export_jfr(recording, dest)
+        analyze_independently([("jfr", jfr_analysis)], result, env)
         time.sleep(7)
         # Stop before reading rotated files, and let the agent flush the final export.
         app.terminate()
         app.wait(timeout=40)
         command([*COMPOSE, "stop", "collector"], env=env, timeout=40)
-        metrics = selected_metrics(telemetry)
-        write_gzip_json(dest / "selected-metrics.json.gz", metrics)
         start = timestamp(json.loads((dest / "measured/environment.json").read_text())["StartedAt"])
         end = timestamp(json.loads((dest / "measured/exit.json").read_text())["FinishedAt"])
-        samples = [json.loads(line) for line in (dest / "resources.jsonl").read_text().splitlines()]
-        for key, analyze in (("acquisition", lambda: acquisition_report(metrics, start, end)),
-                             ("resources", lambda: resource_report(samples))):
-            try:
-                result[key] = analyze()
-            except (ValueError, KeyError) as error:
-                result[key] = {"valid": False, "error": str(error)}
-        result["executionCompleted"] = all(result[phase]["executionCompleted"] for phase in ("warmup", "measurement"))
-        result["oraclesPassed"] = all(result[phase]["reconciliation"]["passed"] for phase in ("warmup", "measurement"))
+        def acquisition_analysis():
+            metrics = selected_metrics(telemetry)
+            write_gzip_json(dest / "selected-metrics.json.gz", metrics)
+            return acquisition_report(metrics, start, end)
+        def resources_analysis():
+            return resource_report([json.loads(line) for line in (dest / "resources.jsonl").read_text().splitlines()])
+        analyze_independently([("acquisition", acquisition_analysis), ("resources", resources_analysis)], result, env)
         result["instrumentationValid"] = all(result[key]["valid"] for key in ("jfr", "acquisition", "resources"))
-        result["performanceTargetMet"] = result["measurement"]["performanceTargetMet"]
-        result["allPerformanceGatesMet"] = result["measurement"]["allPerformanceGatesMet"]
     except Exception as error:
         result["error"] = scrub(type(error).__name__ + ": " + str(error), env)
     finally:
+        cleanup_errors = []
         stop.set()
         if monitor:
             monitor.join(timeout=15)
+            if monitor.is_alive():
+                cleanup_errors.append("sampler did not stop")
         if app and app.poll() is None:
-            app.terminate()
             try:
-                app.wait(timeout=40)
-            except subprocess.TimeoutExpired:
-                app.kill()
-                app.wait(timeout=10)
+                app.terminate()
+                try:
+                    app.wait(timeout=40)
+                except subprocess.TimeoutExpired:
+                    app.kill()
+                    app.wait(timeout=10)
+            except Exception as error:
+                cleanup_errors.append("application stop: " + type(error).__name__)
         if logfile:
-            logfile.close()
-            (dest / "backend.log").write_text(scrub((temp / "backend.log").read_text(), env), encoding="utf-8")
-        command(["docker", "rm", "-f", env["COMPOSE_PROJECT_NAME"] + "-load"], check=False)
+            try:
+                logfile.close()
+                (dest / "backend.log").write_text(scrub((temp / "backend.log").read_text(), env), encoding="utf-8")
+            except Exception as error:
+                cleanup_errors.append("backend log: " + type(error).__name__)
+        try:
+            command(["docker", "rm", "-f", env["COMPOSE_PROJECT_NAME"] + "-load"], check=False)
+        except Exception as error:
+            cleanup_errors.append("load container cleanup: " + type(error).__name__)
         try:
             cleanup = command([*COMPOSE, "down", "--volumes", "--remove-orphans"], env=env, timeout=90, check=False)
             result["cleanupExitCode"] = cleanup.returncode
@@ -271,14 +324,19 @@ def variant(index, pool, output, private, jar, agent, base_env):
             result["cleanupExitCode"] = -1
             result["cleanupError"] = type(error).__name__
         result["FinishedAt"] = now()
+        result["cleanupErrors"] = cleanup_errors
         write_json(dest / "result.json", result)
         # The private root is created by this process and never supplied by a caller.
-        shutil.rmtree(temp)
+        try:
+            shutil.rmtree(temp)
+        except Exception as error:
+            result["cleanupErrors"].append("private file cleanup: " + type(error).__name__)
+            write_json(dest / "result.json", result)
     return result
 
 
 def report_campaign(runs):
-    execution = len(runs) == 4 and all(run["executionCompleted"] and run["instrumentationValid"] and run["oraclesPassed"] and run["cleanupExitCode"] == 0 for run in runs)
+    execution = len(runs) == 4 and all(run["executionCompleted"] and run["instrumentationValid"] and run["oraclesPassed"] and run["cleanupExitCode"] == 0 and not run.get("cleanupErrors") for run in runs)
     pairs = []
     for left, right in ((0, 1), (3, 2)):
         if len(runs) > max(left, right) and all("measurement" in runs[i] for i in (left, right)):
@@ -287,8 +345,9 @@ def report_campaign(runs):
                 "pool16MinusPool2P95Ms": b["latencyMilliseconds"]["p95"] - a["latencyMilliseconds"]["p95"],
                 "pool16MinusPool2Dropped": b["dropped"] - a["dropped"],
                 "pool16MinusPool2ValidOfferedFraction": b["validOfferedFraction"] - a["validOfferedFraction"]})
+    attainment = len(runs) == 4 and all(run["allPerformanceGatesMet"] for run in runs)
     return {"executionAndOraclesPassed": execution,
-            "allMeasuredPerformanceGatesMet": len(runs) == 4 and all(run["allPerformanceGatesMet"] for run in runs),
+            "allMeasuredPerformanceGatesMet": attainment, "validAcceptance": execution and attainment,
             "orderedRuns": runs, "pairedDifferences": pairs,
             "interpretation": "Two runs per pool on one hosted VM are a bounded contention investigation, not production capacity, a stable SLO, or cloud scaling. Correlation of waits/stacks/resources does not establish cause. The same bidder session and hot auction create intentional shared-session/row contention. No application default is changed."}
 
@@ -312,7 +371,7 @@ def main():
     env["GRAFANA_ADMIN_PASSWORD"] = secrets.token_urlsafe(32)
     output.mkdir()
     jar = ROOT / "build/libs/auctionhouse.jar"
-    source_paths = ["experiments/profile/run.py", "experiments/profile/analyze.py", "experiments/profile/diagnostic.jfc",
+    source_paths = ["experiments/profile/run.py", "experiments/profile/analyze.py", "experiments/profile/diagnostic.jfc", "experiments/profile/ProfileEvents.java",
                     "experiments/load/k6-workload.js", "experiments/load/reconcile.mjs", "observability/agent.properties",
                     "compose.yaml", "compose.broker.yaml", "compose.cache.yaml", "compose.observability.yaml", "observability/collector.yaml"]
     write_json(output / "campaign-environment.json", {"sourceSHA": os.environ["GITHUB_SHA"], "runId": os.environ["GITHUB_RUN_ID"],

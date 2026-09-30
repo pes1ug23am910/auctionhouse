@@ -4,7 +4,9 @@ import datetime as dt
 import gzip
 import json
 import math
+import os
 import pathlib
+import tempfile
 
 EVENTS = (
     "jdk.ExecutionSample", "jdk.NativeMethodSample", "jdk.ThreadPark",
@@ -217,5 +219,12 @@ def write_json(path, value):
 
 
 def write_gzip_json(path, value):
-    with gzip.open(path, "wt", encoding="utf-8") as out:
-        json.dump(value, out, allow_nan=False)
+    destination = pathlib.Path(path)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".tmp", delete=False) as handle:
+        temporary = pathlib.Path(handle.name)
+    try:
+        with gzip.open(temporary, "wt", encoding="utf-8") as out:
+            json.dump(value, out, allow_nan=False)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)

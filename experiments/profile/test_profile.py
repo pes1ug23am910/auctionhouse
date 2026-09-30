@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from analyze import acquisition_report, histogram_quantile, jfr_report, performance, resource_report
+from analyze import acquisition_report, histogram_quantile, jfr_report, performance, resource_report, write_gzip_json
 import run
 
 
@@ -39,6 +39,67 @@ def resource(at):
 
 
 class ProfilingContracts(unittest.TestCase):
+    def test_exited_load_container_does_not_erase_dependency_samples(self):
+        dependency = "a" * 64
+        responses = [subprocess.CompletedProcess([], 0, "\n", ""),
+                     subprocess.CompletedProcess([], 0, json.dumps({"Container": dependency}) + "\n", "")]
+        with patch.object(run, "command", side_effect=responses) as execute:
+            sample = run.container_sample({"COMPOSE_PROJECT_NAME": "owned"}, [dependency])
+        self.assertFalse(sample["loadContainerRunningAtLookup"])
+        self.assertEqual([{"Container": dependency}], sample["containers"])
+        self.assertEqual(dependency, execute.call_args_list[-1].args[0][-1])
+
+    def test_empty_inventory_never_falls_back_to_daemon_wide_stats(self):
+        with patch.object(run, "command") as execute:
+            with self.assertRaisesRegex(ValueError, "unscoped"):
+                run.container_sample({"COMPOSE_PROJECT_NAME": "owned"}, [])
+            execute.assert_not_called()
+
+    def test_dependency_inventory_requires_exact_owned_services(self):
+        records = [{"id": str(i) * 64, "project": "owned", "running": True, "service": service} for i, service in enumerate(run.SERVICES)]
+        self.assertEqual(6, len(run.validate_owned_dependencies(records, "owned")))
+        wrong = copy.deepcopy(records)
+        wrong[0]["project"] = "unrelated"
+        duplicate = copy.deepcopy(records)
+        duplicate[0]["id"] = duplicate[1]["id"]
+        for case in ([], records[:-1], wrong, duplicate):
+            with self.assertRaises(ValueError):
+                run.validate_owned_dependencies(case, "owned")
+
+    def test_unowned_resource_output_is_rejected(self):
+        responses = [subprocess.CompletedProcess([], 1, "", "not present"),
+                     subprocess.CompletedProcess([], 0, json.dumps({"Container": "b" * 64}) + "\n", "")]
+        with patch.object(run, "command", side_effect=responses):
+            with self.assertRaisesRegex(ValueError, "unowned"):
+                run.container_sample({"COMPOSE_PROJECT_NAME": "owned"}, ["a" * 64])
+
+    def test_failed_diagnostics_preserve_load_oracles_and_later_diagnostics(self):
+        good = {**performance(summary(), 0), "executionCompleted": True, "reconciliation": {"passed": True}, "oracleExitCode": 0}
+        result = {"warmup": good, "measurement": good}
+        run.update_load_flags(result)
+        def fail():
+            raise RuntimeError("fixture export too large")
+        run.analyze_independently([("jfr", fail), ("acquisition", lambda: {"valid": True}), ("resources", lambda: {"valid": True})], result, {})
+        self.assertFalse(result["jfr"]["valid"])
+        self.assertTrue(result["resources"]["valid"])
+        self.assertTrue(result["acquisition"]["valid"])
+        self.assertTrue(result["oraclesPassed"])
+        self.assertTrue(result["performanceTargetMet"])
+        self.assertTrue(result["executionCompleted"])
+
+    def test_failed_oracle_process_cannot_promote_retained_passed_json(self):
+        good = {**performance(summary(), 0), "executionCompleted": True, "reconciliation": {"passed": True}, "oracleExitCode": 1}
+        result = {"warmup": good, "measurement": good}
+        run.update_load_flags(result)
+        self.assertFalse(result["oraclesPassed"])
+
+    def test_failed_gzip_serialization_leaves_no_partial_public_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = pathlib.Path(directory) / "selected.json.gz"
+            with self.assertRaises(ValueError):
+                write_gzip_json(target, {"value": float("nan")})
+            self.assertEqual([], list(pathlib.Path(directory).iterdir()))
+
     def test_dropped_work_consumes_offered_budget_and_preserves_exit99(self):
         result = performance(summary(dropped=2), 99)
         self.assertEqual(100 / 102, result["validOfferedFraction"])
@@ -141,6 +202,12 @@ class ProfilingContracts(unittest.TestCase):
         self.assertFalse(report["allMeasuredPerformanceGatesMet"])
         self.assertEqual(2, len(report["pairedDifferences"]))
         self.assertFalse(run.report_campaign(runs[:3])["executionAndOraclesPassed"])
+        for item in runs:
+            item["allPerformanceGatesMet"] = True
+            item["instrumentationValid"] = False
+        report = run.report_campaign(runs)
+        self.assertTrue(report["allMeasuredPerformanceGatesMet"])
+        self.assertFalse(report["validAcceptance"])
 
     def test_actual_runner_contract_reconciles_after_k6_exit99(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -150,9 +217,11 @@ class ProfilingContracts(unittest.TestCase):
             workload.write_text("fixture")
             output = root / "measured"
             calls = []
+            arguments = []
 
             def execute(args, **kwargs):
                 calls.append(args[0])
+                arguments.append(args)
                 if args[0] == "docker":
                     (output / "summary.json").write_text(json.dumps(summary(dropped=3)))
                     return subprocess.CompletedProcess(args, 99, "threshold failed", "")
@@ -162,6 +231,7 @@ class ProfilingContracts(unittest.TestCase):
             with patch.object(run, "ROOT", root), patch.object(run, "command", side_effect=execute):
                 result = run.run_load(output, 100, 45, "fixture", {"COMPOSE_PROJECT_NAME": "owned"})
             self.assertEqual(["docker", "node"], calls)
+            self.assertNotIn("--rm", arguments[0])
             self.assertTrue(result["executionCompleted"])
             self.assertTrue(result["reconciliation"]["passed"])
             self.assertFalse(result["performanceTargetMet"])
@@ -187,6 +257,53 @@ class ProfilingContracts(unittest.TestCase):
             down = next(call for call in calls if "down" in call[0])
             self.assertEqual("profile-1234-1", down[1]["COMPOSE_PROJECT_NAME"])
             self.assertEqual([], list(private.iterdir()))
+
+    def test_load_container_cleanup_timeout_does_not_skip_dependency_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            output, private = root / "output", root / "private"
+            output.mkdir()
+            private.mkdir()
+            jar = root / "fixture.jar"
+            jar.write_bytes(b"fixture")
+            calls = []
+            def execute(args, **kwargs):
+                calls.append(args)
+                if "rm" in args:
+                    raise subprocess.TimeoutExpired(args, 60)
+                return subprocess.CompletedProcess(args, 1 if "up" in args else 0, "", "")
+            with patch.object(run, "command", side_effect=execute), patch.dict(os.environ, {"GITHUB_RUN_ID": "1234"}):
+                result = run.variant(1, 2, output, private, jar, jar, {})
+            self.assertTrue(any("down" in args for args in calls))
+            self.assertTrue(result["cleanupErrors"])
+            self.assertEqual(0, result["cleanupExitCode"])
+            self.assertTrue((output / "01-pool2/result.json").exists())
+
+
+class ActualExporterContracts(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory(prefix="profile-export-test-")
+        source = pathlib.Path(__file__).parent
+        subprocess.run(["javac", "-d", cls.directory.name, str(source / "ProfileEvents.java"), str(source / "ExporterProbe.java")], check=True, capture_output=True, text=True, timeout=30)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.directory.cleanup()
+
+    def probe(self, mode):
+        with tempfile.TemporaryDirectory(prefix="profile-recording-test-") as directory:
+            result = subprocess.run(["java", "-Xmx64m", "-cp", self.directory.name, "ExporterProbe", mode, directory], check=True, capture_output=True, text=True, timeout=20)
+            self.assertNotIn("fixture-value-must-not-appear", result.stdout + result.stderr)
+
+    def test_actual_recording_exports_only_explicit_primitive_fields(self):
+        self.probe("privacy")
+
+    def test_actual_recording_rejects_unapproved_event_before_writing(self):
+        self.probe("unapproved")
+
+    def test_size_limit_is_enforced_in_utf8_before_each_write(self):
+        self.probe("size")
 
 
 if __name__ == "__main__":

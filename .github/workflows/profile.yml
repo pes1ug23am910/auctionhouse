@@ -89,6 +89,9 @@ jobs:
           import json, os, pathlib, sys
           report = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'profile-report/campaign.json').read_text())
           attained = report['allMeasuredPerformanceGatesMet'] is True
+          complete = report['executionAndOraclesPassed'] is True
           print('All four measured load/latency gates attained:', attained)
-          sys.exit(0 if attained else 1)
+          print('Supporting diagnostics and durable oracles complete:', complete)
+          print('Overall valid acceptance:', report['validAcceptance'])
+          sys.exit(0 if report['validAcceptance'] is True else 1)
           PY
