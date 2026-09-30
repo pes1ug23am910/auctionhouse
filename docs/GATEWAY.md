@@ -137,17 +137,81 @@ fan-out sharing is demonstrated, while the extra runtime and authorization
 traffic have not shown a repeatable benefit. It does not establish a
 production capacity, multi-host result or exact active-socket comparison.
 
+## Observed local faults and accounting (2026-10-01)
+
+A separate instrumented run used the same JAR and gateway server/buffer/parser
+artifacts as the comparison above, Java 25.0.2, Node 24.15.0 and a fresh owned
+PostgreSQL 18.6 database. Java had a 512 MiB maximum heap and database pool 8;
+PostgreSQL had a 512 MiB container limit, one CPU and `pg_stat_statements`.
+The production gateway kept its default queue and authorization limits. The
+runner supplied local demo credentials to the real rotating-token/session
+implementation; this was not a hosted OIDC-provider or AWS test.
+
+Three real-stack cases passed:
+
+| Fault | Observed recovery and durable oracle |
+| --- | --- |
+| Forced gateway process kill | Two bids were accepted by Java while the gateway was offline. Reconnecting with the original version-4 cursor to a new gateway process returned an exact authoritative version-6 snapshot; the next live event arrived at version 7. All five accepted bids matched durable history and idempotent outcomes. Offline versions 5/6 were recovered as state, not claimed as delivered SSE frames. |
+| Refresh rotation and revocation | Both original and rotated credentials streamed before consumed-refresh reuse returned 401. Both streams in that family closed in 324 ms in this single observation; an independent session for the same actor continued. Old and rotated credentials could not reopen streams. After logout and another process restart, the saved independent-session cookie also returned 401. Both bids matched durable history/outcomes. |
+| Blocked TCP receiver | An authenticated real socket with a 1024-byte receive buffer stopped reading after HTTP headers. Default gateway limits disconnected that receiver after 80 accepted bids, while its healthy peer received all 80 committed event identities/content. `write(false)` occurred, and resuming reads reached EOF. Reconnecting the original version-2 cursor returned the exact version-82 snapshot. All 80 bids matched durable history/outcomes. |
+
+The slow receiver used a legitimate 3900-character auction description to make
+pressure attainable within a bounded local run. The gateway reported one slow
+client disconnect and a maximum observed Node writable buffer of 18,772 bytes;
+that writable value excludes the pending queue and is not a total memory bound.
+The 80-bid count and revocation timing are fixture observations, not thresholds
+or latency guarantees. Controlled-upstream tests continue to cover deliberately
+duplicated, conflicting and out-of-order source input; the real Java source was
+not corrupted to manufacture those conditions.
+
+Six subsequent runs each used eight clients and 20 bids scheduled 250 ms apart,
+in alternating order. Every run matched all 160 client frames to committed
+PostgreSQL event identities and content: 120 bids and 960 observations. Together
+with the fault cases, the run accepted 207 bids. The access-token lookup SELECT
+was measured by `pg_stat_statements` before/after each interval; no query values
+or credentials were exported. The figures include lookups caused by bids and
+stream setup/maintenance during the same interval, not all Java authorization
+logic, JVM CPU or HTTP time.
+
+| Order | Access-token SELECT calls / execution ms | Gateway authorization HTTP attempts | Maximum observed established TCP connections: Java / gateway | TCP samples |
+| --- | --- | --- | --- | --- |
+| java-1 | 322 / 9.19 | 0 | 22 / 7 | 13 |
+| gateway-1 | 303 / 11.80 | 146 | 25 / 16 | 12 |
+| gateway-2 | 277 / 10.11 | 146 | 25 / 17 | 12 |
+| java-2 | 314 / 9.10 | 0 | 25 / 17 | 11 |
+| java-3 | 399 / 11.40 | 0 | 25 / 9 | 12 |
+| gateway-3 | 360 / 14.03 | 146 | 25 / 16 | 12 |
+
+TCP tables were sampled every 500 ms for the exact process IDs during active
+intervals. Counts include database connections, HTTP pools and lingering
+keepalives, explaining gateway sockets even during direct Java runs. They are
+maximum observed process connections, not continuously observed peaks or a
+count of SSE connections. Gateway HTTP/socket/write observations every 100 ms
+and database statistics add instrumentation overhead. Intervals lasted about
+6.0-6.5 seconds; maximum submission lateness was 15.2-26.7 ms. Fault work warmed
+the processes, but there were no matched topology-specific warmups for this
+accounting series. JVM/database/pool state carried between runs and other host
+applications remained active. The short, variable counts and execution times
+do not establish an authorization-cost or socket-efficiency advantage.
+
+[The reproducible runner](../gateway/README.md#real-stack-fault-runner) keeps
+these fault and accounting observations separate from the earlier pool-16
+latency/resource comparison. Java remains the default. The additional gateway
+requires independent service health/routing, credential revalidation, restart
+recovery and slow-client disconnect handling; those local failure paths now
+have real-stack evidence.
+
 ## Remaining comparison scope
 
 The broader comparison still requires:
 
 - Fixed offered-rate and longer-duration work on a controlled host; the local
   response-paced comparison above measures equal event/client counts.
-- Active/peak socket measurements and comparable Java authorization-work
-  accounting; the existing counters and snapshots have narrower semantics.
-- Real-stack slow-client, credential rotation/revocation and restart runs;
-  current adversarial transport tests use a controlled upstream fixture.
+- Continuously observed socket peaks and complete Java authorization CPU/time
+  attribution; the active process samples and access-token SELECT accounting
+  above have deliberately narrower semantics.
 - One-versus-two-host results and the named load balancer/session configuration.
-- Operational costs of the extra runtime and the supported failure envelope.
+- Hosted operational costs and longer-duration failure behavior; local process,
+  credential and slow-client failure paths are documented above.
 
 [ADR 0003](adr/0003-sse-gateway.md) retains Java as default after this local comparison.

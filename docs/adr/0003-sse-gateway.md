@@ -67,4 +67,11 @@ preserve those limitations. Java needs one application runtime; the gateway
 adds a deployable service, health/routing policy, retained transport state and
 periodic dependency on the authorization authority. The demonstrated fan-out
 sharing does not yet justify those additional operational responsibilities.
-Broader multi-host and real-stack fault measurements remain separate work.
+The subsequent [real-stack fault/accounting run](../GATEWAY.md#observed-local-faults-and-accounting-2026-10-01)
+proved forced process restart with offline bids and authoritative cursor
+recovery, real credential-family revocation/nonresurrection, and bounded
+disconnect of a blocked TCP reader while its healthy peer retained every event.
+Six short matched runs also recorded actual access-token database lookups and
+active process TCP samples. Those narrower metrics do not establish a repeatable
+cost advantage or exact socket peaks. Multi-host results and longer controlled
+capacity/operational measurements remain separate work.

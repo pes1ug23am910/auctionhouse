@@ -6,8 +6,11 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ src/
 COPY test/ test/
+COPY tools/ tools/
 RUN npm test
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.title="auctionhouse-gateway" org.opencontainers.image.revision=$SOURCE_REVISION
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /source/dist/src/ ./dist/
 COPY package.json ./

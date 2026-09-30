@@ -121,3 +121,81 @@ Samples from many clients receiving one event are correlated.
 This mutates the local demo database by creating explicitly named comparison
 auctions. It does not delete fixtures. Raw result files belong outside public
 source. See [the design](../docs/GATEWAY.md) for the retained wider comparison.
+
+
+## Real-stack fault runner
+
+`tools/real-stack-faults.mjs` uses the production Java API and compiled gateway
+with an independently owned PostgreSQL fixture. It kills only gateway children
+that it starts. It does not start/stop Java or PostgreSQL, change shared database
+settings, delete fixtures or contact a hosted identity provider.
+
+Run the following setup from the repository root. Build the Java JAR using the
+[local quickstart](../README.md), then run `npm ci` and `npm run build` in
+`gateway`. Create a **new** PostgreSQL 18.6 container and volume, bound to a free
+loopback port, named `auctionhouse-gateway-fault-<run-id>` and labelled
+`Purpose=gateway-real-faults`. Give it a private generated password and bounded
+resources (the recorded run used 512 MiB and one CPU). Add PostgreSQL arguments
+`-c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all`,
+then create the `pg_stat_statements` extension in its `auctionhouse` database.
+Do not retrofit this instrumentation onto a shared database.
+
+Start the JAR with the `local` profile on a separate loopback port, pointing to
+that database; use the documented private demo-password hash configuration.
+The recorded run used `-Xms256m -Xmx512m`, pool size 8 and otherwise default
+session lifetimes. Verify readiness and the exact Java PID. Use a free gateway
+port: the runner owns its gateway processes and forcibly restarts them.
+
+Create a private JSON configuration outside this repository:
+
+```json
+{
+  "javaOrigin": "http://127.0.0.1:18089",
+  "javaPid": 12345,
+  "gatewayPort": 39019,
+  "databaseContainer": "auctionhouse-gateway-fault-example",
+  "pythonExecutable": "python",
+  "outputDirectory": "E:/private-evidence/gateway-fault-run"
+}
+```
+
+The output directory must be new, with an existing real parent outside the
+source checkout. Supply `AUCTIONHOUSE_DEMO_PASSWORD` only through the private
+process environment; neither the JSON nor command line contains credentials.
+Python 3 is required for the real blocked TCP receiver. Native Windows enables
+process TCP sampling; other platforms leave those samples absent.
+
+```sh
+node --test gateway/tools/fault-contracts.test.mjs
+python gateway/tools/slow-reader.test.py
+node gateway/tools/real-stack-faults.mjs /private/path/config.json
+```
+
+The runner exercises forced process loss with accepted bids while offline,
+original-cursor snapshot recovery, refresh rotation and reuse revocation,
+independent session survival, logout across restart, and a real authenticated
+TCP receiver that stops reading. The slow-client fixture uses a 3900-character
+auction description and default gateway queue limits, with a declared maximum
+of 2000 bids or 90 seconds. Failure to create observable pressure is a failed
+experiment, not a slow-client pass. A healthy peer must retain every committed
+event ID/content. Recovered snapshots must equal authoritative Java state;
+offline events recovered through a snapshot are not counted as delivered frames.
+
+Six additional eight-client runs alternate Java/gateway/gateway/Java/Java/gateway,
+with 20 bids per run scheduled 250 ms apart and one second of settle time.
+Submission lateness is retained. PostgreSQL counts/times only the actual
+access-token lookup SELECT family; this is not complete Java authorization
+cost. Gateway HTTP authorization attempts are separate. Every 500 ms, Windows
+TCP tables are sampled for the exact Java/gateway PIDs; counts include pooled,
+keepalive and other process connections. They are sampled maxima, not exact
+peaks or SSE-only counts. Gateway socket/write/RSS observations arrive every
+100 ms and add instrumentation overhead. Fault cases precede these short runs;
+they are not controlled topology-specific warmups or capacity measurements.
+
+The new private report retains source hashes, event identity/content digests,
+authoritative recovery checks, credential rejection status, process lifetimes,
+sampling intervals and failures without recording cookies or token values.
+On completion, stop only the Java process and database fixture you created,
+after verifying their identities. Keep raw evidence outside public source.
+See [the observed fault results](../docs/GATEWAY.md#observed-local-faults-and-accounting-2026-10-01)
+for the measured behavior and limits.

@@ -40,3 +40,7 @@ AWS measurements remain pending account readiness and cloud authorization.
 ## Host comparison tooling
 
 The [host runner](../experiments/hosts/README.md) binds the same seeded workload to a verified AWS ALB and one or two actual application instances. It records shared dependencies, immutable artifacts, per-host settings, observed request counters, client constraints and source-cut reconciliation. Local contract tests and a small actual HTTPS session-workload regression pass. Real AWS timing, routing and scaling evidence remains pending; these fixtures do not satisfy that requirement.
+
+## Repeated local-topology investigation
+
+The separate [manual Ubuntu campaign](../experiments/profile/README.md) runs pool order 2/16/16/2 with a single newly built JAR and fresh dependency data for each variant. It captures Linux resource pressure, PostgreSQL waits, finite acquisition histogram deltas and selected JFR events. Both run orders, threshold exit codes and durable reconciliations remain visible. Diagnostic execution and performance acceptance are separate workflow steps: missed offered-work/latency targets fail the final acceptance step after artifacts are retained. Actual hosted results must be read from their source- and artifact-bound run report. This experiment uses one VM with a local topology and does not substitute for the pending AWS host comparison.
