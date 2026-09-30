@@ -38,7 +38,8 @@ def main() -> int:
         "packages": {name: importlib.metadata.version(name) for name in ["duckdb", "dbt-core", "dbt-duckdb"]},
         "inputSha256": hashlib.sha256(args.input.read_bytes()).hexdigest(),
         "manifestSha256": manifest["sha256"], "cutId": manifest["cutId"],
-        "path": "real notification sink export; repeated warehouse ingestion of one fixed cut",
+        "path": "repeated warehouse ingestion of one fixed cut",
+        "declaredInputSource": manifest["source"],
         "runs": [],
     }
     for number in range(1, args.runs + 1):

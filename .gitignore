@@ -56,3 +56,5 @@ crash.log
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+.full-release/

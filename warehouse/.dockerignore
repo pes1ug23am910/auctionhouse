@@ -1,0 +1,15 @@
+*
+!Dockerfile
+!requirements.lock
+!pyproject.toml
+!src/
+!src/**
+!dbt/
+!dbt/**
+!tools/
+!tools/**
+!container-cut.sh
+**/__pycache__
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/

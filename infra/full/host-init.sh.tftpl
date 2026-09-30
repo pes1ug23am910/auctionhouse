@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+dnf install -y docker jq python3
+systemctl enable --now docker
+install -d -m 0755 /opt/auctionhouse/full
+python3 - <<'PY'
+import base64,gzip,json,pathlib
+root=pathlib.Path('/opt/auctionhouse/full')
+for name,content in json.loads(gzip.decompress(base64.b64decode('${bundle}'))).items():
+    target=root/name
+    if not target.resolve().is_relative_to(root): raise SystemExit('Invalid bundled path')
+    target.parent.mkdir(parents=True,exist_ok=True)
+    if name.startswith('observability/'):
+        parent=target.parent
+        while parent != root:
+            parent.chmod(0o755)
+            parent=parent.parent
+    target.write_text(content,encoding='utf-8')
+    target.chmod(0o700 if name.endswith('.sh') else (0o644 if name.startswith('observability/') else 0o600))
+PY
+/opt/auctionhouse/full/bootstrap.sh

@@ -1,0 +1,240 @@
+name: Verify and deliver the complete immutable release
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to the separately approved and bootstrapped full AWS topology'
+        type: boolean
+        default: false
+      schema_compatible:
+        description: 'Reviewed migrations preserve compatibility with the previous release'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: auctionhouse-full-delivery
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AUCTIONHOUSE_DB_PASSWORD: disposable-full-delivery-fixture-only
+      DBT_SEND_ANONYMOUS_USAGE_STATS: 'false'
+      DBT_USE_COLORS: 'false'
+      AUCTIONHOUSE_TEST_FORKS: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: '1.16.4'
+      - name: Validate the full topology using the mock provider
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/full fmt -check -recursive
+          terraform -chdir=infra/full init -backend=false -lockfile=readonly
+          terraform -chdir=infra/full validate
+          terraform -chdir=infra/full test
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13.15'
+          cache: pip
+          cache-dependency-path: warehouse/requirements.lock
+      - name: Verify local release, ownership, secret and warehouse contracts
+        run: |
+          set -euo pipefail
+          python -m pip install -r warehouse/requirements.lock
+          python -m pip check
+          python -m unittest discover -s ops/cloud/full/tests -v
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Host comparison manifest and identity contracts
+        run: node --test experiments/hosts/contracts.test.mjs
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+        with:
+          cache-provider: basic
+      - name: Current backend and PostgreSQL integration correctness
+        run: bash ./gradlew --no-daemon --no-watch-fs test integrationTest
+      - name: Build each release image once
+        run: |
+          set -euo pipefail
+          docker build --build-arg "SOURCE_REVISION=$GITHUB_SHA" -t auctionhouse-full-app:candidate .
+          docker build -f gateway/Dockerfile -t auctionhouse-full-gateway:candidate gateway
+          docker build -f warehouse/Dockerfile -t auctionhouse-full-warehouse:candidate warehouse
+      - name: Verify the bundled application and failed-release rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $image = docker image inspect auctionhouse-full-app:candidate --format '{{.Id}}'
+          if ($LASTEXITCODE -ne 0) { throw 'Application image inspection failed' }
+          ./ops/Deploy-Local.ps1 -Image $image -Project auctionhouse-full-ci -Port 18080
+          ./ops/Test-LocalRollback.ps1 -GoodImage $image -Project auctionhouse-full-rollback-ci -Port 18081
+      - name: Verify actual gateway and warehouse containers
+        run: |
+          set -euo pipefail
+          gateway=$(docker image inspect auctionhouse-full-gateway:candidate --format '{{.Id}}')
+          warehouse=$(docker image inspect auctionhouse-full-warehouse:candidate --format '{{.Id}}')
+          python ops/cloud/full/test-images.py --gateway-image "$gateway" --warehouse-image "$warehouse" --output "$RUNNER_TEMP/full-image-checks"
+      - name: Export only the verified images and their content manifest
+        run: |
+          set -euo pipefail
+          mkdir .full-release
+          docker save auctionhouse-full-app:candidate auctionhouse-full-gateway:candidate auctionhouse-full-warehouse:candidate -o .full-release/images.tar
+          python - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          archive = Path('.full-release/images.tar')
+          images = {}
+          for component in ('app', 'gateway', 'warehouse'):
+              tag = f'auctionhouse-full-{component}:candidate'
+              image_id = subprocess.check_output(['docker', 'image', 'inspect', tag, '--format', '{{.Id}}'], text=True).strip()
+              images[component] = {'tag': tag, 'imageId': image_id}
+          with archive.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          manifest = {'schemaVersion': 1, 'sourceRevision': os.environ['GITHUB_SHA'],
+                      'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                      'archiveSha256': digest, 'images': images}
+          Path('.full-release/tested-images.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: full-tested-images
+          path: .full-release/
+          include-hidden-files: true
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove the disposable local application fixtures
+        if: always()
+        env:
+          AUCTIONHOUSE_IMAGE: auctionhouse-full-app:candidate
+        run: |
+          set -euo pipefail
+          docker compose --project-name auctionhouse-full-ci -f compose.app.yaml down -v
+          docker compose --project-name auctionhouse-full-rollback-ci -f compose.app.yaml down -v
+
+  deploy:
+    needs: verify
+    if: inputs.deploy && inputs.schema_compatible && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      FULL_DEPLOY_ROLE_ARN: ${{ vars.AUCTIONHOUSE_FULL_DEPLOY_ROLE_ARN }}
+      FULL_MANIFEST_JSON: ${{ secrets.AUCTIONHOUSE_FULL_MANIFEST_JSON }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Bind the reviewed topology to the exact account, Region and role
+        run: |
+          set -euo pipefail
+          mkdir .full-release
+          python - <<'PY'
+          import json, os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          manifest = json.loads(os.environ['FULL_MANIFEST_JSON'])
+          owner = manifest['ownership']
+          account, region, session = owner['accountId'], owner['region'], owner['sessionId']
+          if not re.fullmatch(r'[0-9]{12}', account) or not re.fullmatch(r'[a-z][a-z0-9-]{2,20}', session):
+              raise SystemExit('Invalid topology ownership')
+          if account != os.environ['AWS_ACCOUNT_ID'] or region != os.environ['AWS_REGION'] or owner['project'] != 'auctionhouse':
+              raise SystemExit('Reviewed account and Region must match topology ownership')
+          expected_name = f'auctionhouse-{session}-full'
+          if os.environ['FULL_DEPLOY_ROLE_ARN'] != f'arn:aws:iam::{account}:role/{expected_name}-deploy':
+              raise SystemExit('Deployment role does not match the reviewed full topology')
+          if datetime.fromisoformat(owner['expiresAt'].replace('Z', '+00:00')) <= datetime.now(timezone.utc):
+              raise SystemExit('Topology approval has expired')
+          origin = urlsplit(manifest['origin'])
+          if origin.scheme != 'https' or not origin.hostname or origin.username or origin.password or origin.path or origin.query or origin.fragment:
+              raise SystemExit('A single exact verified HTTPS origin is required')
+          expected_repositories = {component: f'{account}.dkr.ecr.{region}.amazonaws.com/{expected_name}-{component}'
+                                   for component in ('app', 'gateway', 'warehouse')}
+          if manifest['schemaVersion'] != 1 or manifest['ecrRepositoryUrls'] != expected_repositories:
+              raise SystemExit('ECR repositories must belong to the exact reviewed topology')
+          Path('.full-release/topology.json').write_text(json.dumps(manifest) + '\n')
+          PY
+      - name: Download the exact images tested in this workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name full-tested-images --dir .full-release/tested
+      - name: Verify archive, source revision and loaded image identities
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, re, subprocess
+          from pathlib import Path
+          root = Path('.full-release/tested')
+          manifest = json.loads((root / 'tested-images.json').read_text())
+          if manifest['schemaVersion'] != 1 or manifest['sourceRevision'] != os.environ['GITHUB_SHA'] or manifest['runId'] != os.environ['GITHUB_RUN_ID'] or manifest['runAttempt'] != os.environ['GITHUB_RUN_ATTEMPT']:
+              raise SystemExit('Artifact is not the exact source and attempt verified by this run')
+          with (root / 'images.tar').open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          if digest != manifest['archiveSha256'] or set(manifest['images']) != {'app', 'gateway', 'warehouse'}:
+              raise SystemExit('Tested image archive or component inventory mismatch')
+          subprocess.run(['docker', 'load', '-i', str(root / 'images.tar')], check=True)
+          for component, image in manifest['images'].items():
+              tag = f'auctionhouse-full-{component}:candidate'
+              if image['tag'] != tag or not re.fullmatch(r'sha256:[a-f0-9]{64}', image['imageId']):
+                  raise SystemExit('Unexpected verified image reference')
+              actual = subprocess.check_output(['docker', 'image', 'inspect', tag, '--format', '{{.Id}}'], text=True).strip()
+              if actual != image['imageId']:
+                  raise SystemExit('Loaded image differs from the tested content')
+          PY
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AUCTIONHOUSE_FULL_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: auctionhouse-full-delivery
+          role-duration-seconds: 3600
+      - name: Publish verified content and record immutable registry digests
+        run: |
+          set -euo pipefail
+          registry="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$registry"
+          tag="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for component in app gateway warehouse; do
+            repository=$(jq -er --arg key "$component" '.ecrRepositoryUrls[$key]' .full-release/topology.json)
+            image_id=$(jq -er --arg key "$component" '.images[$key].imageId' .full-release/tested/tested-images.json)
+            docker tag "$image_id" "$repository:$tag"
+            docker push "$repository:$tag"
+            digest=$(aws ecr describe-images --region "$AWS_REGION" --repository-name "${repository#*/}" --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)
+            [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf '%s\n' "$digest" > ".full-release/$component.digest"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('.full-release')
+          release = {component + 'Digest': (root / (component + '.digest')).read_text().strip()
+                     for component in ('app', 'gateway', 'warehouse')}
+          (root / 'release.json').write_text(json.dumps(release, indent=2) + '\n')
+          PY
+      - name: Deploy the verified release through scoped SSM and target groups
+        run: |
+          set -euo pipefail
+          python ops/cloud/full/deploy.py --manifest .full-release/topology.json --release .full-release/release.json --mode deploy --schema-compatible --output "$RUNNER_TEMP/full-deployment-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: full-release-digests
+          path: |
+            .full-release/release.json
+            .full-release/tested/tested-images.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Remove temporary registry authentication
+        if: always()
+        run: docker logout "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"

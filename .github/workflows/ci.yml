@@ -77,6 +77,8 @@ jobs:
       - run: npm ci
       - name: Build and test authenticated fan-out and backpressure
         run: npm test
+      - name: Host comparison manifest and identity contracts
+        run: node --test ../experiments/hosts/contracts.test.mjs
 
   warehouse:
     runs-on: ubuntu-24.04

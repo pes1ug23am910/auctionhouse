@@ -17,3 +17,5 @@ Records describe the software and its trade-offs, nothing else.
 - [0005: Compare actual Apache Kafka](0005-broker-comparison.md)
 
 Observed results live in the associated technical reports. These records describe the accepted design decisions; later measurements do not rewrite the original decision.
+
+- [0006: Separate full host experiment](0006-full-host-topology.md) — ALB, one/two application instances and shared dependencies; cloud execution remains pending.

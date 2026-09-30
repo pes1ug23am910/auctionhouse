@@ -28,3 +28,5 @@
 
 !observability/
 !observability/agent.properties
+
+.full-release/

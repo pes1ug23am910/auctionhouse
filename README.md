@@ -1,5 +1,7 @@
 # auctionhouse
 
+[![Build and integration tests](https://github.com/pes1ug23am910/auctionhouse/actions/workflows/ci.yml/badge.svg)](https://github.com/pes1ug23am910/auctionhouse/actions/workflows/ci.yml)
+
 A fixed-deadline auction application with a React interface, a Java 25/Spring Boot backend and PostgreSQL as the authority for bids. Sellers create and publish listings; other accounts place exact integer offers, follow live updates and see the recorded winner after closure. No payments are collected.
 
 The implementation includes durable bid identities, two transaction isolation strategies, OIDC and rotating application credentials, a transactional outbox and broker sink, bounded SSE delivery, cache adapters, SQL experiments and a DuckDB/dbt warehouse. It is a locally exercised engineering project; real AWS delivery and multi-host performance remain separate work.
@@ -45,7 +47,7 @@ For a browser development server, optional local demo login, the immutable conta
 | SQL and warehouse | Seven-query million-row SQL experiment; strict DuckDB ingestion, quarantine, dbt star models, three replays of one real sink cut | [SQL](docs/SQL.md), [warehouse](docs/WAREHOUSE.md) |
 | Gateway experiment | Authenticated Node.js fan-out, bounded buffers, resume/restart tests and paired event collector; Java remains the default | [Gateway](docs/GATEWAY.md) |
 | Delivery operations | Bundled immutable image, local smoke/rollback and database-role checks; Terraform and scoped cloud release/teardown interfaces | [Deployment](docs/DEPLOYMENT.md) |
-| Observation and load | Verified asynchronous trace, live dashboards, seeded k6 comparison with failed load targets retained, and alert firing/recovery | [Observability](docs/OBSERVABILITY.md), [load report](docs/LOAD-TEST.md) |
+| Observation and load | Verified asynchronous trace, live dashboards, seeded k6 comparison with failed load targets retained, and alert firing/recovery | [Observability](docs/OBSERVABILITY.md), [load report](docs/LOAD-TEST.md), [host comparison harness](experiments/hosts/README.md) |
 
 Local checks establish their named configurations, not production scale. The actual PageKV server, full cloud stack, real AWS negative tests and teardown, hosted-provider configuration, and one-versus-two-host load-balancer comparison remain unverified. These requirements are retained in the technical specifications.
 
@@ -64,4 +66,4 @@ npm.cmd --prefix gateway test
 
 Toolchain pins live in the Gradle version catalogue/wrapper, npm locks, warehouse lock and container digests. The current Java stack uses Spring Boot 4.1.1, Gradle 9.8.0, JUnit 6, Testcontainers 2 and PostgreSQL 18.6.
 
-[Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md) · [Testing](docs/TESTING.md) · [Architecture decisions](docs/adr/README.md) · [Changelog](CHANGELOG.md)
+[Architecture](docs/ARCHITECTURE.md) Â· [Development](docs/DEVELOPMENT.md) Â· [Testing](docs/TESTING.md) Â· [Architecture decisions](docs/adr/README.md) Â· [Changelog](CHANGELOG.md)

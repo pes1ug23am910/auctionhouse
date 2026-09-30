@@ -36,3 +36,7 @@ The measurements preceded the subsequent dependency security updates and
 belong to the artifact hash recorded in the observability report. Newer
 builds do not inherit these timing results. Actual one-host versus two-host
 AWS measurements remain pending account readiness and cloud authorization.
+
+## Host comparison tooling
+
+The [host runner](../experiments/hosts/README.md) binds the same seeded workload to a verified AWS ALB and one or two actual application instances. It records shared dependencies, immutable artifacts, per-host settings, observed request counters, client constraints and source-cut reconciliation. Local contract tests and a small actual HTTPS session-workload regression pass. Real AWS timing, routing and scaling evidence remains pending; these fixtures do not satisfy that requirement.

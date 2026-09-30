@@ -114,6 +114,8 @@ The purge script is read-only by default; destructive execution requires both `-
 
 ## Evidence still required from real AWS
 
+The separate [full topology](../infra/full/README.md) and its [operator commands](../ops/cloud/full/README.md) add AWS ALB, one/two actual app hosts, a shared dependency host and RDS, supplemental gateway/warehouse images, pinned SSM release/inspection, and a dedicated full-state teardown guard. Local Terraform mock, script-contract and container-packaging checks pass; these artifacts do not establish an actual full cloud deployment. The thin root remains available independently.
+
 A completed A7 release needs the approved cost estimate, actual resource/ownership manifest, app digest and migration record, valid public TLS, real issuer login, runtime DB privilege denial, public DB/SSH denial, mismatched OIDC repository/ref rejection, failed-candidate recovery to the prior digest, reboot recovery, measured resource/log behavior and a verified final teardown/residual inventory. Thin and full deployments must be labelled separately. Local image/Compose/mock tests do not establish any of these cloud observations.
 
 ## Official references
