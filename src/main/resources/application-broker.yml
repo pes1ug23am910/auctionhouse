@@ -1,0 +1,30 @@
+auctionhouse:
+  broker:
+    enabled: true
+    topic: ${AUCTIONHOUSE_EVENT_TOPIC:auctionhouse.events.v1}
+    group: ${AUCTIONHOUSE_EVENT_GROUP:auctionhouse-notifications-v1}
+spring:
+  kafka:
+    bootstrap-servers: ${AUCTIONHOUSE_BROKERS:localhost:19092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 5000
+        request.timeout.ms: 3000
+        max.block.ms: 3000
+        max.in.flight.requests.per.connection: 5
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 32
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        max.partition.fetch.bytes: 1048576
+        fetch.max.bytes: 4194304
+    listener:
+      ack-mode: manual_immediate
+      concurrency: 1

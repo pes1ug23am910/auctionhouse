@@ -1,0 +1,17 @@
+[versions]
+spring-boot = "4.1.1"
+jackson = "3.1.7"
+tomcat = "11.0.26"
+lz4 = "1.11.1"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+
+jackson-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson" }
+tomcat-core = { module = "org.apache.tomcat.embed:tomcat-embed-core", version.ref = "tomcat" }
+tomcat-el = { module = "org.apache.tomcat.embed:tomcat-embed-el", version.ref = "tomcat" }
+tomcat-websocket = { module = "org.apache.tomcat.embed:tomcat-embed-websocket", version.ref = "tomcat" }
+lz4-java = { module = "at.yawk.lz4:lz4-java", version.ref = "lz4" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

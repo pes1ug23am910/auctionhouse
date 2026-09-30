@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:${AUCTIONHOUSE_DB_PORT:5432}/auctionhouse
+    username: auctionhouse
+    password: ${AUCTIONHOUSE_DB_PASSWORD:local-development-only}
+server:
+  address: 127.0.0.1
+
+auctionhouse:
+  auth:
+    secure-cookies: false

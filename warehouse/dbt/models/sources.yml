@@ -1,0 +1,13 @@
+version: 2
+sources:
+  - name: auctionhouse_raw
+    schema: raw
+    tables:
+      - name: events
+        columns:
+          - name: event_id
+            data_tests: [unique, not_null]
+      - name: load_attempts
+      - name: source_cuts
+      - name: cut_members
+      - name: quarantine

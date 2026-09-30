@@ -1,0 +1,9 @@
+auctionhouse:
+  cache:
+    backend: ${AUCTIONHOUSE_CACHE_BACKEND:memcached}
+    host: ${AUCTIONHOUSE_CACHE_HOST:127.0.0.1}
+    port: ${AUCTIONHOUSE_CACHE_PORT:0}
+    timeout: 500ms
+    max-value-bytes: 262144
+    ttl: 30s
+    no-expiry: false

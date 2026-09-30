@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+    alias(libs.plugins.spring.boot)
+}
+
+group = 'io.auctionhouse'
+version = '0.1.0-SNAPSHOT'
+description = 'Transactional auction service'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+repositories { mavenCentral() }
+
+sourceSets {
+    integrationTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+dependencies {
+    implementation platform(libs.spring.boot.bom)
+    implementation platform(libs.jackson.bom)
+    // Temporary stable security updates ahead of the Boot platform; primary references in docs/DEPENDENCIES.md.
+    constraints {
+        implementation(libs.tomcat.core) { because 'Tomcat security fixes through 11.0.26' }
+        implementation(libs.tomcat.el) { because 'Align the embedded Tomcat family' }
+        implementation(libs.tomcat.websocket) { because 'Align the embedded Tomcat family' }
+        implementation(libs.lz4.java) { because 'GHSA-xx22-p4ch-683r native XXHash bounds validation' }
+    }
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+    implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'io.opentelemetry:opentelemetry-api'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation platform(libs.spring.boot.bom)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    integrationTestImplementation 'org.postgresql:postgresql'
+    integrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    integrationTestImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    integrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-parameters', '-Xlint:deprecation', '-Xlint:unchecked']
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    systemProperty 'user.timezone', 'UTC'
+    maxHeapSize = '768m'
+    maxParallelForks = providers.environmentVariable('AUCTIONHOUSE_TEST_FORKS').map { it.toInteger() }.getOrElse(1)
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat = 'full'
+    }
+    systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+    systemProperty 'auctionhouse.contentionRuns', providers.systemProperty('auctionhouse.contentionRuns').getOrElse('1')
+    systemProperty 'auctionhouse.contentionClients', providers.systemProperty('auctionhouse.contentionClients').getOrElse('20')
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs PostgreSQL-backed integration tests; requires Docker.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    systemProperty 'auctionhouse.integrationClasspath', sourceSets.integrationTest.runtimeClasspath.asPath
+    systemProperty 'auctionhouse.brokerExperiment', providers.systemProperty('auctionhouse.brokerExperiment').getOrElse('false')
+    systemProperty 'auctionhouse.brokerOutage', providers.systemProperty('auctionhouse.brokerOutage').getOrElse('false')
+    systemProperty 'auctionhouse.brokerContainer', providers.systemProperty('auctionhouse.brokerContainer').getOrElse('auctionhouse-redpanda-1')
+    systemProperty 'auctionhouse.brokers', providers.systemProperty('auctionhouse.brokers').getOrElse('127.0.0.1:19092')
+    systemProperty 'auctionhouse.experimentOutput', providers.systemProperty('auctionhouse.experimentOutput').getOrElse('build/experiments/broker')
+    shouldRunAfter tasks.test
+}
+
+// Database tests run explicitly in CI; the ordinary build remains usable without Docker.
+tasks.named('bootJar') { archiveFileName = 'auctionhouse.jar' }
+tasks.named('jar') { enabled = false }
+
+dependencyLocking { lockAllConfigurations() }

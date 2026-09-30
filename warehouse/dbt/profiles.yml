@@ -1,0 +1,8 @@
+auctionhouse_warehouse:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('AUCTIONHOUSE_WAREHOUSE_PATH') }}"
+      schema: analytics
+      threads: 1

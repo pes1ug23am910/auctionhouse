@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auctionhouse-warehouse"
+version = "0.1.0"
+description = "Immutable auction-event ingestion and source-cut reconciliation"
+requires-python = ">=3.11"
+dependencies = ["duckdb==1.5.6"]
+
+[project.optional-dependencies]
+transforms = ["dbt-duckdb==1.11.0", "dbt-core==1.12.5"]
+dev = ["pytest==9.1.1"]
+
+[project.scripts]
+auction-warehouse = "auctionwarehouse.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

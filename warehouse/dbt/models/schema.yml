@@ -1,0 +1,50 @@
+version: 2
+models:
+  - name: dim_auction_versions
+    columns:
+      - name: auction_version_key
+        data_tests: [unique, not_null]
+      - name: owner_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_actors')
+                field: actor_id
+  - name: dim_actors
+    columns:
+      - name: actor_id
+        data_tests: [unique, not_null]
+  - name: dim_dates
+    columns:
+      - name: event_date
+        data_tests: [unique, not_null]
+  - name: fct_auction_events
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: auction_version_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_auction_versions')
+                field: auction_version_key
+      - name: event_date
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: event_date
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['auction.created', 'auction.published', 'bid.accepted', 'auction.closed', 'auction.cancelled']
+  - name: mart_auction_outcomes
+    columns:
+      - name: auction_id
+        data_tests: [unique, not_null]
+  - name: mart_daily_activity
+    columns:
+      - name: event_date
+        data_tests: [unique, not_null]

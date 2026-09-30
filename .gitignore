@@ -41,3 +41,18 @@ node_modules/
 .vite/
 playwright-report/
 test-results/
+
+# Local release metadata and infrastructure secrets/state
+.release/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/

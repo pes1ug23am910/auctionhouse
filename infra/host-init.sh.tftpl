@@ -1,0 +1,61 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+dnf install -y docker jq python3
+systemctl enable --now docker
+install -d -m 0755 /etc/auctionhouse /opt/auctionhouse /var/lib/auctionhouse /var/lib/auctionhouse/caddy-data /var/lib/auctionhouse/caddy-config
+cat > /etc/auctionhouse/deployment.env <<'CONFIG'
+AWS_REGION='${region}'
+DOMAIN='${domain}'
+DB_HOST='${db_host}'
+PARAMETER_PREFIX='${prefix}'
+REPOSITORY='${repository}'
+LOG_GROUP='${log_group}'
+CONFIG
+cat > /opt/auctionhouse/release.sh <<'RELEASE'
+${release_script}
+RELEASE
+cat > /opt/auctionhouse/smoke.sh <<'SMOKE'
+${smoke_script}
+SMOKE
+cat > /etc/auctionhouse/Caddyfile <<'CADDY'
+${caddyfile}
+CADDY
+chmod 0700 /opt/auctionhouse/release.sh
+chmod 0755 /opt/auctionhouse/smoke.sh
+# Official region CA bundle; HTTPS verification remains enabled. Record its hash in release evidence.
+curl --fail --silent --show-error https://truststore.pki.rds.amazonaws.com/${region}/${region}-bundle.pem -o /etc/auctionhouse/rds-ca.pem
+chmod 0644 /etc/auctionhouse/rds-ca.pem
+docker network create auctionhouse
+docker run -d --name auctionhouse-tls --network auctionhouse --restart unless-stopped \
+  --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges --memory 128m --cpus 0.25 \
+  -p 80:80 -p 443:443 -e AUCTIONHOUSE_DOMAIN='${domain}' \
+  -v /etc/auctionhouse/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v /var/lib/auctionhouse/caddy-data:/data -v /var/lib/auctionhouse/caddy-config:/config \
+  caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+
+cat > /opt/auctionhouse/restore.sh <<'RESTORE'
+#!/bin/bash
+set -euo pipefail
+[[ -f /var/lib/auctionhouse/current ]] || exit 0
+image=$(cat /var/lib/auctionhouse/current)
+digest="$${image##*@}"
+exec /opt/auctionhouse/release.sh rollback "$digest" schema-compatible
+RESTORE
+chmod 0700 /opt/auctionhouse/restore.sh
+cat > /etc/systemd/system/auctionhouse-restore.service <<'SERVICE'
+[Unit]
+Description=Restore the last verified auctionhouse release and volatile secrets
+After=network-online.target docker.service amazon-ssm-agent.service
+Wants=network-online.target
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/auctionhouse/restore.sh
+TimeoutStartSec=900
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+SERVICE
+systemctl daemon-reload
+systemctl enable auctionhouse-restore.service

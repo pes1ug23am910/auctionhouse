@@ -1,0 +1,137 @@
+name: Review and deliver immutable image
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Publish and deploy after project, cost, DNS and OIDC approval'
+        type: boolean
+        default: false
+      schema_compatible:
+        description: 'Reviewed migrations preserve compatibility with the previous image'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: auctionhouse-delivery
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+        with:
+          cache-provider: basic
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: '1.16.4'
+      - name: Validate infra without AWS credentials
+        run: |
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra init -backend=false -lockfile=readonly
+          terraform -chdir=infra validate
+          terraform -chdir=infra test
+      - name: Teardown ownership guards without cloud commands
+        shell: pwsh
+        run: ./ops/Test-TeardownGuard.ps1
+      - name: Backend and database integration checks
+        run: bash ./gradlew --no-daemon --no-watch-fs test integrationTest
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Browser session and owner-action contracts
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/session-fixture.spec.ts e2e/catalog-fixture.spec.ts
+      - name: Build once and verify bundled release
+        env:
+          AUCTIONHOUSE_DB_PASSWORD: disposable-ci-fixture-only
+        shell: pwsh
+        run: |
+          docker build --build-arg SOURCE_REVISION=${{ github.sha }} -t auctionhouse:candidate .
+          if ($LASTEXITCODE -ne 0) { throw 'Image build failed' }
+          $id = docker image inspect auctionhouse:candidate --format '{{.Id}}'
+          ./ops/Deploy-Local.ps1 -Image $id -Project auctionhouse-ci -Port 18080
+          ./ops/Test-LocalRollback.ps1 -GoodImage $id -Port 18081
+          docker save auctionhouse:candidate -o image.tar
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact export failed' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tested-image
+          path: image.tar
+          retention-days: 1
+      - name: Cleanup local fixture
+        if: always()
+        env:
+          AUCTIONHOUSE_DB_PASSWORD: disposable-ci-fixture-only
+          AUCTIONHOUSE_IMAGE: auctionhouse:candidate
+        run: |
+          docker compose --project-name auctionhouse-ci -f compose.app.yaml down -v
+          docker compose --project-name auctionhouse-rollback-test -f compose.app.yaml down -v
+  deploy:
+    needs: verify
+    if: inputs.deploy && inputs.schema_compatible && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      INSTANCE_ID: ${{ vars.AUCTIONHOUSE_INSTANCE_ID }}
+      RELEASE_DOCUMENT: ${{ vars.AUCTIONHOUSE_RELEASE_DOCUMENT }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download the exact tested image artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download '${{ github.run_id }}' --name tested-image --dir .release
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AUCTIONHOUSE_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: auctionhouse-delivery
+          role-duration-seconds: 1800
+      - name: Push tested content and invoke the scoped SSM document
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load -i .release/image.tar
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${ECR_REPOSITORY%%/*}"
+          tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker tag auctionhouse:candidate "$ECR_REPOSITORY:$tag"
+          docker push "$ECR_REPOSITORY:$tag"
+          digest=$(aws ecr describe-images --repository-name "${ECR_REPOSITORY#*/}" --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)
+          [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]]
+          jq -n --arg digest "$digest" '{Mode:["deploy"],Digest:[$digest],Compatibility:["schema-compatible"]}' > .release/parameters.json
+          command=$(aws ssm send-command --document-name "$RELEASE_DOCUMENT" --instance-ids "$INSTANCE_ID" --parameters file://.release/parameters.json --query Command.CommandId --output text)
+          status=Pending
+          for attempt in $(seq 1 100); do
+            status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Success) break;; Failed|Cancelled|TimedOut|Cancelling) break;; esac
+            sleep 10
+          done
+          aws ssm get-command-invocation --command-id "$command" --instance-id "$INSTANCE_ID" --query '{Status:Status,ResponseCode:ResponseCode,Output:StandardOutputContent,Error:StandardErrorContent}' > .release/result.json
+          cat .release/result.json
+          [[ $status == Success ]]
+          printf '%s\n' "$ECR_REPOSITORY@$digest" > .release/released-image.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: release-evidence
+          path: |
+            .release/result.json
+            .release/released-image.txt

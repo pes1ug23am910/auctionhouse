@@ -1,0 +1,35 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.3@sha256:9e83cfa99278f30d0133271c26bf670cd69c94ffa6ba0b42830dd0c3bd9dcfd9
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - 768M
+      - --reserve-memory
+      - 0M
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://127.0.0.1:19092
+      - --set
+      - redpanda.write_caching_default=false
+      - --set
+      - redpanda.auto_create_topics_enabled=false
+    ports:
+      - "127.0.0.1:19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    mem_limit: 1g
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+volumes:
+  redpanda-data:

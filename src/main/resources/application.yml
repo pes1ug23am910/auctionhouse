@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: auctionhouse
+  datasource:
+    url: ${AUCTIONHOUSE_DB_URL:jdbc:postgresql://localhost:5432/auctionhouse}
+    username: ${AUCTIONHOUSE_DB_USER:auctionhouse}
+    password: ${AUCTIONHOUSE_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${AUCTIONHOUSE_DB_POOL_SIZE:16}
+      connection-timeout: 5000
+  flyway:
+    enabled: true
+    validate-migration-naming: true
+    clean-disabled: true
+  session:
+    jdbc:
+      initialize-schema: never
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+auctionhouse:
+  auth:
+    demo:
+      password-hash: ${AUCTIONHOUSE_DEMO_PASSWORD_HASH:}

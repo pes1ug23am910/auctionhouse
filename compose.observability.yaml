@@ -1,0 +1,68 @@
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/collector.yaml:/etc/otel/config.yaml:ro
+      - type: bind
+        source: ${AUCTIONHOUSE_TELEMETRY_DIR:?Set a private writable telemetry directory}
+        target: /var/otel
+    ports:
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:9464:9464"
+    mem_limit: 192m
+    cpus: 1
+    depends_on: [tempo]
+  tempo:
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
+    command: ["-target=all", "-config.file=/etc/tempo.yaml"]
+    user: "0:0"
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    mem_limit: 512m
+    cpus: 1
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command: ["--config.file=/etc/prometheus/prometheus.yaml", "--storage.tsdb.retention.time=24h", "--storage.tsdb.retention.size=256MB"]
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    mem_limit: 192m
+    cpus: 1
+    depends_on: [collector]
+  grafana:
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    environment:
+      GF_SECURITY_ADMIN_USER: auctionhouse
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set a local Grafana admin password}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
+      GF_PATHS_PLUGINS: /tmp/auctionhouse-plugins
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3300:3000"
+    tmpfs:
+      - /tmp:size=64m
+    mem_limit: 320m
+    cpus: 1
+    depends_on: [prometheus, tempo]
+volumes:
+  tempo-data:
+  prometheus-data:
+  grafana-data:

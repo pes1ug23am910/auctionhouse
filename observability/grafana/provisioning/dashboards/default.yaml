@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: Auctionhouse
+    folder: Auctionhouse
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 15
+    options:
+      path: /var/lib/grafana/dashboards

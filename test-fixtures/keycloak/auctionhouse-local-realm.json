@@ -1,0 +1,42 @@
+{
+  "realm": "auctionhouse-local",
+  "displayName": "Auctionhouse disposable local fixture",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "accessTokenLifespan": 120,
+  "ssoSessionIdleTimeout": 1800,
+  "clients": [
+    {
+      "clientId": "auctionhouse-web",
+      "name": "Auctionhouse local browser",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8080/login/oauth2/code/keycloak"],
+      "webOrigins": ["http://localhost:8080"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "defaultClientScopes": ["web-origins", "acr", "profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "seller", "enabled": true, "emailVerified": true,
+      "email": "seller@auctionhouse.invalid", "firstName": "Seller", "lastName": "Fixture",
+      "requiredActions": [],
+      "credentials": [{"type": "password", "value": "local-seller-fixture-only", "temporary": false}]
+    },
+    {
+      "username": "bidder", "enabled": true, "emailVerified": true,
+      "email": "bidder@auctionhouse.invalid", "firstName": "Bidder", "lastName": "Fixture",
+      "requiredActions": [],
+      "credentials": [{"type": "password", "value": "local-bidder-fixture-only", "temporary": false}]
+    }
+  ]
+}

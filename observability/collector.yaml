@@ -1,0 +1,53 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 144
+    spike_limit_mib: 32
+  resource/privacy:
+    attributes:
+      - {key: process.command_args, action: delete}
+      - {key: process.command_line, action: delete}
+  attributes/privacy:
+    actions:
+      - {key: http.request.header.authorization, action: delete}
+      - {key: http.request.header.cookie, action: delete}
+      - {key: http.response.header.set_cookie, action: delete}
+  batch:
+    timeout: 1s
+    send_batch_size: 128
+exporters:
+  otlp_http/tempo:
+    endpoint: http://tempo:4318
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 30s
+  file/traces:
+    path: /var/otel/traces.jsonl
+    rotation: {max_megabytes: 10, max_backups: 2}
+  file/metrics:
+    path: /var/otel/metrics.jsonl
+    rotation: {max_megabytes: 10, max_backups: 2}
+  file/logs:
+    path: /var/otel/logs.jsonl
+    rotation: {max_megabytes: 10, max_backups: 2}
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/privacy, attributes/privacy, batch]
+      exporters: [otlp_http/tempo, file/traces]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/privacy, batch]
+      exporters: [prometheus, file/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/privacy, attributes/privacy, batch]
+      exporters: [file/logs]

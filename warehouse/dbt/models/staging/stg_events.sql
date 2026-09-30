@@ -1,0 +1,22 @@
+select
+    event_id,
+    event_type,
+    schema_version,
+    auction_id,
+    aggregate_version,
+    occurred_at,
+    (occurred_at at time zone 'UTC')::date as event_date,
+    json_extract_string(canonical_envelope, '$.payload.ownerId')::uuid as owner_id,
+    json_extract_string(canonical_envelope, '$.payload.title') as title,
+    json_extract_string(canonical_envelope, '$.payload.description') as description,
+    json_extract_string(canonical_envelope, '$.payload.status') as auction_status,
+    json_extract_string(canonical_envelope, '$.payload.openingPriceMinor')::bigint as opening_price_minor,
+    json_extract_string(canonical_envelope, '$.payload.minimumIncrementMinor')::bigint as minimum_increment_minor,
+    json_extract_string(canonical_envelope, '$.payload.highestBidAmountMinor')::bigint as highest_bid_amount_minor,
+    json_extract_string(canonical_envelope, '$.payload.highestBidderId')::uuid as leading_bidder_id,
+    json_extract_string(canonical_envelope, '$.payload.winnerId')::uuid as winner_id,
+    json_extract_string(canonical_envelope, '$.payload.createdAt')::timestamptz as auction_created_at,
+    json_extract_string(canonical_envelope, '$.payload.endsAt')::timestamptz as ends_at,
+    envelope_sha256,
+    first_seen_at
+from {{ source('auctionhouse_raw', 'events') }}

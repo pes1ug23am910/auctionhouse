@@ -1,0 +1,32 @@
+groups:
+  - name: auctionhouse
+    rules:
+      - alert: AuctionhouseProbeUnavailable
+        expr: auctionhouse_probe_success == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Local HTTP availability probe has failed continuously
+          description: Inspect application process, readiness and database connection before restarting.
+      - alert: AuctionhouseCollectorUnavailable
+        expr: up{job="auctionhouse-collector"} == 0
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Telemetry scrape is unavailable; missing metrics are not healthy service evidence
+      - alert: AuctionhouseRetryExhaustion
+        expr: sum(increase(auctionhouse_transaction_exhausted_total[1m])) > 0
+        for: 10s
+        labels:
+          severity: warning
+        annotations:
+          summary: Bounded transaction retry budget exhausted
+      - alert: AuctionhouseHttpErrorBudgetBurn
+        expr: sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count[5m])), 0.001) > 0.02
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: HTTP server-error ratio exceeds twice the proposed 1 percent error budget

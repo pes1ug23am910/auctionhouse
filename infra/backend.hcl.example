@@ -1,0 +1,7 @@
+# Bootstrap-owned encrypted state bucket. Never destroy it with the app module.
+bucket = "REPLACE_WITH_APPROVED_STATE_BUCKET"
+key = "auctionhouse/REPLACE_WITH_SESSION/terraform.tfstate"
+region = "REPLACE_WITH_CONFIRMED_SELECTED_REGION"
+encrypt = true
+use_lockfile = true
+allowed_account_ids = ["REPLACE_WITH_EXPECTED_ACCOUNT_ID"]

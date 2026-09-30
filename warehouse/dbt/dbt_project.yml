@@ -1,0 +1,13 @@
+name: auctionhouse_warehouse
+version: '0.1.0'
+config-version: 2
+profile: auctionhouse_warehouse
+model-paths: [models]
+test-paths: [tests]
+analysis-paths: [analyses]
+clean-targets: [target, dbt_packages]
+models:
+  auctionhouse_warehouse:
+    +materialized: table
+    staging:
+      +materialized: view

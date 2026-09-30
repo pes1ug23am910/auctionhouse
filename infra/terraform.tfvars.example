@@ -1,0 +1,15 @@
+# Copy to a private *.tfvars file only after the AWS project is usable and costs are approved.
+# Values below are placeholders, not permission to create resources.
+account_id = "123456789012"
+region = "REPLACE_WITH_CONFIRMED_SELECTED_REGION"
+availability_zones = ["SELECTED_REGIONa", "SELECTED_REGIONb"]
+session_id = "demo-01"
+owner = "REPLACE_WITH_OWNER"
+expires_at = "2026-10-02T00:00:00Z"
+approved_monthly_budget_usd = 0 # Deliberately invalid until approved.
+budget_email = "REPLACE_WITH_ALERT_EMAIL"
+domain_name = "REPLACE_WITH_OWNED_HOSTNAME"
+ami_id = "REPLACE_WITH_REVIEWED_AL2023_AMI"
+github_repository = "REPLACE_WITH_OWNER/auctionhouse"
+github_ref = "refs/heads/main"
+github_oidc_provider_arn = "REPLACE_WITH_EXISTING_PROJECT_OIDC_PROVIDER_ARN"

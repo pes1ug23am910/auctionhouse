@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: "local & oidc"
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: auctionhouse-web
+            client-authentication-method: none
+            authorization-grant-type: authorization_code
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: http://localhost:8081/realms/auctionhouse-local

@@ -1,0 +1,15 @@
+services:
+  memcached:
+    image: memcached:1.6.45@sha256:405a445c7c81bca205850426288baa5655c72859ae31d3de3fa823e6482be4ad
+    command: ["memcached", "-m", "64", "-U", "0", "-l", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:11211:11211"
+    mem_limit: 128m
+    cpus: 1
+  redis:
+    image: redis:8.10.2@sha256:6f81e8915c60b065a524e6967e0ad1c639ba6efa84d669f823683ea04d9150ee
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    mem_limit: 128m
+    cpus: 1

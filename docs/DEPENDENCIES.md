@@ -1,0 +1,15 @@
+# Dependency security maintenance
+
+The application uses Spring Boot's stable 4.1.1 dependency platform, with narrow security updates where that platform predates upstream fixes. Keep the override families aligned and remove an override only after the managed platform includes an equal or newer compatible fix. Do not switch to a milestone framework release solely to obtain a transitive patch.
+
+| Family | Reviewed target | Reason and primary source |
+| --- | --- | --- |
+| Jackson 3 | `tools.jackson:jackson-bom:3.1.7` | Maintains the existing 3.1 line and aligns its modules. [3.1.7 release](https://github.com/FasterXML/jackson-databind/releases/tag/jackson-databind-3.1.7) fixes the [identity-reference CPU issue](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24) and [unknown polymorphic-ID retention](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54), following 3.1.6's deserialization fixes. |
+| Embedded Tomcat | `org.apache.tomcat.embed:tomcat-embed-core`, `tomcat-embed-el`, `tomcat-embed-websocket`: `11.0.26` | [Apache's 11.x security page](https://tomcat.apache.org/security-11.html) lists fixes through 11.0.26, including HTTP parsing and authentication/constraint issues. Align all embedded modules. |
+| LZ4 Java | `at.yawk.lz4:lz4-java:1.11.1` | [Upstream advisory](https://github.com/yawkat/lz4-java/security/advisories/GHSA-xx22-p4ch-683r) and [release](https://github.com/yawkat/lz4-java/releases/tag/v1.11.1) fix JNI XXHash array/range validation that can terminate the JVM. |
+
+A version match is a dependency finding, not proof that a specific application endpoint is exploitable. Current auction DTOs do not intentionally enable Jackson polymorphic or identity-based deserialization, and application authorization uses Spring Security rather than container DIGEST/FORM authentication. Those facts do not replace patching and regression testing.
+
+Use `npm audit` in `frontend/` and `gateway/` for their npm lockfiles. For Java, query every exact Maven coordinate in `gradle.lockfile` against a maintained advisory database such as the [OSV API](https://google.github.io/osv.dev/api/), then confirm affected ranges and fixes with the library maintainer. OSV import timing can lag an upstream security page. Preserve the audit date, lock hash, complete response and triage privately; do not present a point-in-time clean result as a permanent guarantee. An application lockfile audit does not scan the operating-system packages or the separate OpenTelemetry agent embedded in the release image.
+
+After an update, regenerate dependency locks, run Java units and ordinary integration tests, and build/test the actual immutable release image. Preserve earlier measurement artifacts with their original versions. The Gradle wrapper binary includes its upstream Apache 2.0 `META-INF/LICENSE`; its published checksum and the distribution checksum must continue to match the pinned wrapper version. The repository's MIT license does not replace third-party licenses.
