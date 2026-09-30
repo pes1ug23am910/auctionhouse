@@ -37,6 +37,13 @@ The image includes checksum-verified OpenTelemetry Java agent 2.31.1 at `/opt/ot
 
 ## AWS project prerequisites
 
+Both release workflows run the [image security gate](../ops/security/README.md)
+against the exact built image IDs before artifact export. Its reports include
+OS/application package inventories, database age and all matched findings.
+High, Critical and Unknown severities block release, including unfixed issues;
+lower severities remain visible for review. This local check does not replace
+the selected AMI review or actual ECR findings below.
+
 `infra/` is a locally reviewable Terraform module. It has not, by itself, established AWS application delivery. Use the user's selected Region from **AWS Settings → View all projects → Overview → Additional Info → Region**, or the explicitly configured CLI profile if that setting cannot be read. The new AWS experience restricts regional resources to that Region. The module requires the Region and two available zones; it does not infer them from the console URL.
 
 Before any cloud plan/apply, confirm:

@@ -31,6 +31,9 @@ jobs:
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
           terraform_version: '1.16.4'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13.15'
       - name: Validate infra without AWS credentials
         run: |
           terraform -chdir=infra fmt -check -recursive
@@ -63,9 +66,26 @@ jobs:
           $id = docker image inspect auctionhouse:candidate --format '{{.Id}}'
           ./ops/Deploy-Local.ps1 -Image $id -Project auctionhouse-ci -Port 18080
           ./ops/Test-LocalRollback.ps1 -GoodImage $id -Port 18081
+      - name: Scan the exact application image before export
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s ops/security/tests -v
+          app=$(docker image inspect auctionhouse:candidate --format '{{.Id}}')
+          python ops/security/scan-images.py --revision "$GITHUB_SHA" --image "app=$app" --cache "$RUNNER_TEMP/image-scanner-tools" --output "$RUNNER_TEMP/image-security"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: image-security
+          path: ${{ runner.temp }}/image-security/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Export the verified application image
+        shell: pwsh
+        run: |
           docker save auctionhouse:candidate -o image.tar
           if ($LASTEXITCODE -ne 0) { throw 'Artifact export failed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.deploy && inputs.schema_compatible && github.ref == 'refs/heads/main'
         with:
           name: tested-image
           path: image.tar

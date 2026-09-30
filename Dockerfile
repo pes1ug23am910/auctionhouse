@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS web
+FROM node:24.21.0-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS web
 WORKDIR /web
 COPY frontend/package*.json ./
 RUN npm ci
@@ -20,6 +20,9 @@ RUN javac -cp '/unpacked/BOOT-INF/lib/*' -d /unpacked/BOOT-INF/classes /ops/io/a
 FROM eclipse-temurin:25-jre-noble@sha256:693fdaf83831eeeefd9709eae44c8b8706622652f972cf5903bd0e481bbf6ad3
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="auctionhouse" org.opencontainers.image.revision=$SOURCE_REVISION
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade perl-base=5.38.2-3.2ubuntu0.6 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /unpacked/BOOT-INF/classes/ classes/
 COPY --from=build --chown=10001:10001 /unpacked/BOOT-INF/lib/ lib/

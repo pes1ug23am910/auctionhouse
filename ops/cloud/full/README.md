@@ -33,6 +33,12 @@ Watch disk usage and export evidence before teardown.
 
 ## Local validation and immutable packaging
 
+Before artifact export, the full workflow runs the shared
+[image security check](../../security/README.md) on the exact application,
+gateway and warehouse image IDs. Scanner/database failures and High, Critical
+or Unknown findings stop release. Reports preserve all severities; a passing
+gate is not a claim that no vulnerabilities exist.
+
 Run without cloud credentials:
 
 ```sh

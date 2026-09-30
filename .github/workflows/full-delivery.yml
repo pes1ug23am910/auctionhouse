@@ -65,8 +65,8 @@ jobs:
         run: |
           set -euo pipefail
           docker build --build-arg "SOURCE_REVISION=$GITHUB_SHA" -t auctionhouse-full-app:candidate .
-          docker build -f gateway/Dockerfile -t auctionhouse-full-gateway:candidate gateway
-          docker build -f warehouse/Dockerfile -t auctionhouse-full-warehouse:candidate warehouse
+          docker build --build-arg "SOURCE_REVISION=$GITHUB_SHA" -f gateway/Dockerfile -t auctionhouse-full-gateway:candidate gateway
+          docker build --build-arg "SOURCE_REVISION=$GITHUB_SHA" -f warehouse/Dockerfile -t auctionhouse-full-warehouse:candidate warehouse
       - name: Verify the bundled application and failed-release rollback
         shell: pwsh
         run: |
@@ -81,6 +81,21 @@ jobs:
           gateway=$(docker image inspect auctionhouse-full-gateway:candidate --format '{{.Id}}')
           warehouse=$(docker image inspect auctionhouse-full-warehouse:candidate --format '{{.Id}}')
           python ops/cloud/full/test-images.py --gateway-image "$gateway" --warehouse-image "$warehouse" --output "$RUNNER_TEMP/full-image-checks"
+      - name: Scan the exact release images before export
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s ops/security/tests -v
+          app=$(docker image inspect auctionhouse-full-app:candidate --format '{{.Id}}')
+          gateway=$(docker image inspect auctionhouse-full-gateway:candidate --format '{{.Id}}')
+          warehouse=$(docker image inspect auctionhouse-full-warehouse:candidate --format '{{.Id}}')
+          python ops/security/scan-images.py --revision "$GITHUB_SHA" --image "app=$app" --image "gateway=$gateway" --image "warehouse=$warehouse" --cache "$RUNNER_TEMP/image-scanner-tools" --output "$RUNNER_TEMP/full-image-security"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: full-image-security
+          path: ${{ runner.temp }}/full-image-security/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Export only the verified images and their content manifest
         run: |
           set -euo pipefail

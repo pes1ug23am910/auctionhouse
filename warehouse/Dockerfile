@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-bookworm@sha256:3e2de9c40ca4e3d73240059f9d48baff27908f10293e985a2f382a0378e6df4a
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
+FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.title="auctionhouse-warehouse" org.opencontainers.image.revision=$SOURCE_REVISION
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client libssl3t64=3.5.7-1~deb13u3 openssl=3.5.7-1~deb13u3 openssl-provider-legacy=3.5.7-1~deb13u3 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /warehouse
 COPY requirements.lock pyproject.toml ./
 RUN pip install --no-cache-dir setuptools==84.0.0 && pip install --no-cache-dir -r requirements.lock
