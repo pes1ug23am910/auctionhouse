@@ -103,12 +103,20 @@ jobs:
           Path('.full-release/tested-images.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.deploy && inputs.schema_compatible && github.ref == 'refs/heads/main'
         with:
           name: full-tested-images
           path: .full-release/
           include-hidden-files: true
           retention-days: 1
           compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: full-verification-manifest
+          path: .full-release/tested-images.json
+          include-hidden-files: true
+          retention-days: 7
           if-no-files-found: error
       - name: Remove the disposable local application fixtures
         if: always()

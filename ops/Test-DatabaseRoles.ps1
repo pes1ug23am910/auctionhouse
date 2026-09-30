@@ -14,22 +14,37 @@ $sql=$sql.Replace('{migration}',$migration).Replace('{runtime_password}',$runtim
 if($LASTEXITCODE -ne 0){ throw 'Use a fresh fixture DB; no existing database is overwritten' }
 $sql | docker exec -i $DatabaseContainer psql -X -q -v ON_ERROR_STOP=on -U auctionhouse -d $database
 if($LASTEXITCODE -ne 0){ throw 'Bootstrap role SQL failed' }
-$env:AUCTIONHOUSE_DB_PASSWORD=$migration
-& docker run --rm --network $Network --memory 512m --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -e "AUCTIONHOUSE_DB_URL=jdbc:postgresql://postgres:5432/$database" -e AUCTIONHOUSE_DB_USER=ah_migrator -e AUCTIONHOUSE_DB_PASSWORD -e AUCTIONHOUSE_RUNTIME_DB_USER=ah_runtime $Image migrate
-if($LASTEXITCODE -ne 0){ throw 'Schema-owner migration failed' }
-$env:PGPASSWORD=$runtime
-function Runtime-Sql([string]$Statement,[bool]$ShouldPass){
-    $output=$Statement | docker exec -i -e PGPASSWORD $DatabaseContainer psql -X -q -v ON_ERROR_STOP=on -h 127.0.0.1 -U ah_runtime -d $database 2>&1
-    $passed=$LASTEXITCODE -eq 0
-    if($passed -ne $ShouldPass){ throw ('Runtime permission assertion failed: '+$Statement) }
+$hadDatabasePassword = Test-Path Env:AUCTIONHOUSE_DB_PASSWORD
+$previousDatabasePassword = $env:AUCTIONHOUSE_DB_PASSWORD
+$hadPgPassword = Test-Path Env:PGPASSWORD
+$previousPgPassword = $env:PGPASSWORD
+try {
+    $env:AUCTIONHOUSE_DB_PASSWORD=$migration
+    & docker run --rm --network $Network --memory 512m --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -e "AUCTIONHOUSE_DB_URL=jdbc:postgresql://postgres:5432/$database" -e AUCTIONHOUSE_DB_USER=ah_migrator -e AUCTIONHOUSE_DB_PASSWORD -e AUCTIONHOUSE_RUNTIME_DB_USER=ah_runtime $Image migrate
+    if($LASTEXITCODE -ne 0){ throw 'Schema-owner migration failed' }
+    $env:PGPASSWORD=$runtime
+    function Runtime-Sql([string]$Statement,[bool]$ShouldPass){
+        $output=$Statement | docker exec -i -e PGPASSWORD $DatabaseContainer psql -X -q -v ON_ERROR_STOP=on -h 127.0.0.1 -U ah_runtime -d $database 2>&1
+        $passed=$LASTEXITCODE -eq 0
+        if($passed -ne $ShouldPass){ throw ('Runtime permission assertion failed: '+$Statement) }
+    }
+    Runtime-Sql "INSERT INTO accounts(id,issuer,subject,display_name) VALUES ('00000000-0000-0000-0000-000000000777','fixture','runtime','Runtime fixture');" $true
+    Runtime-Sql "UPDATE accounts SET display_name='Updated fixture' WHERE subject='runtime';" $true
+    Runtime-Sql 'CREATE TABLE public.forbidden(id bigint);' $false
+    Runtime-Sql 'ALTER TABLE public.accounts ADD COLUMN forbidden text;' $false
+    Runtime-Sql 'DELETE FROM public.flyway_schema_history;' $false
+    Runtime-Sql 'CREATE DATABASE forbidden_database;' $false
+    Runtime-Sql "DELETE FROM accounts WHERE subject='runtime';" $true
+} finally {
+    if ($hadDatabasePassword) {
+        $env:AUCTIONHOUSE_DB_PASSWORD = $previousDatabasePassword
+    } else {
+        Remove-Item Env:AUCTIONHOUSE_DB_PASSWORD -ErrorAction SilentlyContinue
+    }
+    if ($hadPgPassword) {
+        $env:PGPASSWORD = $previousPgPassword
+    } else {
+        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    }
 }
-Runtime-Sql "INSERT INTO accounts(id,issuer,subject,display_name) VALUES ('00000000-0000-0000-0000-000000000777','fixture','runtime','Runtime fixture');" $true
-Runtime-Sql "UPDATE accounts SET display_name='Updated fixture' WHERE subject='runtime';" $true
-Runtime-Sql 'CREATE TABLE public.forbidden(id bigint);' $false
-Runtime-Sql 'ALTER TABLE public.accounts ADD COLUMN forbidden text;' $false
-Runtime-Sql 'DELETE FROM public.flyway_schema_history;' $false
-Runtime-Sql 'CREATE DATABASE forbidden_database;' $false
-Runtime-Sql "DELETE FROM accounts WHERE subject='runtime';" $true
-Remove-Item Env:PGPASSWORD
-Remove-Item Env:AUCTIONHOUSE_DB_PASSWORD
 Write-Output 'PASS: migration owner created schema; runtime can perform DML but cannot create/alter schema, alter migration history, or create databases'

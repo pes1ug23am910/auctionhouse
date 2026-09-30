@@ -10,7 +10,8 @@ Prerequisites: Docker with Linux containers and PowerShell 7. The image build ru
 
 ```powershell
 ./gradlew.bat --no-daemon --no-watch-fs test integrationTest
-docker build --build-arg SOURCE_REVISION=(git rev-parse HEAD) -t auctionhouse:candidate .
+$releaseRevision = git rev-parse HEAD
+docker build --build-arg "SOURCE_REVISION=$releaseRevision" -t auctionhouse:candidate .
 $image = docker image inspect auctionhouse:candidate --format '{{.Id}}'
 $env:AUCTIONHOUSE_DB_PASSWORD = 'choose-a-disposable-local-fixture-password'
 ./ops/Deploy-Local.ps1 -Image $image
@@ -51,7 +52,7 @@ The new experience manages human access. This module does not create IAM users o
 
 ## Thin architecture and cost boundary
 
-The initial module creates one bounded x86 EC2 host, one encrypted single-AZ RDS PostgreSQL database in two private DB subnets, immutable ECR, seven-day application and RDS PostgreSQL logs, scoped service roles, one release SSM document, an Elastic IP and account-wide budget notifications. No SSH ingress, public PostgreSQL port, NAT gateway, load balancer or VPC endpoint baseline is created. RDS requires TLS with hostname/CA validation. Containers cannot obtain the EC2 instance profile through IMDS because IMDSv2 is required with hop limit one; no container uses host networking.
+The initial module creates one bounded x86 EC2 host, one encrypted single-AZ RDS PostgreSQL database in two private DB subnets, immutable ECR, seven-day application and RDS PostgreSQL logs, scoped service roles, one release SSM document, an Elastic IP and account-wide budget notifications. No SSH ingress, public PostgreSQL port, NAT gateway, load balancer or VPC endpoint baseline is created. RDS requires TLS with hostname/CA validation. The module requires IMDSv2 with token-response hop limit one and uses bridge networking. Instance-profile credential denial from the running containers remains a real AWS acceptance check.
 
 The public host serves Caddy on 80/443; Caddy terminates automatic HTTPS and proxies the private application network. The instance reaches AWS APIs over outbound HTTPS. Caddy certificate data is persistent. A systemd boot hook reloads secrets from SSM and restores the last verified release after reboot. AWS deployment scripts are installed from the reviewed Terraform source, rather than downloaded from a moving Git branch.
 

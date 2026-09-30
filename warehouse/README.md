@@ -2,7 +2,7 @@
 
 A DuckDB loader with immutable event identities, delivery-attempt accounting, strict schema quarantine, fixed-cut reconciliation, replacement rebuilds and dbt star models. See [the contract and measured scope](../docs/WAREHOUSE.md).
 
-Use Python 3.13 and an isolated environment. The lock was installed and exercised on Windows; resolved versions are fixed in `requirements.lock`.
+Use Python 3.13 and an isolated environment. Run the installation and CLI commands below from the `warehouse` directory unless stated otherwise. The lock was installed and exercised on Windows; resolved versions are fixed in `requirements.lock`.
 
 ```powershell
 py -3.13 -m venv .venv
@@ -11,17 +11,17 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-On Unix, use `python3.13 -m venv .venv` and `.venv/bin/python`. Do not check an environment, database or source export into Git.
+On Unix, use `python3.13 -m venv .venv`, `.venv/bin/python`, `.venv/bin/auction-warehouse` and `.venv/bin/dbt` for the corresponding commands. Explicit environment paths avoid requiring shell activation. Do not check an environment, database or source export into Git.
 
 Capture the immutable cut through the admin API first. Supply an authorized cookie through the environment without printing it, then export both source and notification effects:
 
 ```powershell
-auction-warehouse export --cut <cut-uuid> --output data/cut
-auction-warehouse ingest --database data/events.duckdb --input data/cut/sink-events.jsonl --manifest data/cut/manifest.json --source notification-sink
-auction-warehouse reconcile --database data/events.duckdb --cut <cut-uuid> --delivery-complete
+.\.venv\Scripts\auction-warehouse.exe export --cut <cut-uuid> --output data/cut
+.\.venv\Scripts\auction-warehouse.exe ingest --database data/events.duckdb --input data/cut/sink-events.jsonl --manifest data/cut/manifest.json --source notification-sink
+.\.venv\Scripts\auction-warehouse.exe reconcile --database data/events.duckdb --cut <cut-uuid> --delivery-complete
 $env:AUCTIONHOUSE_WAREHOUSE_PATH = (Resolve-Path data/events.duckdb).Path
 $env:DBT_SEND_ANONYMOUS_USAGE_STATS = 'false'
-dbt build --project-dir dbt --profiles-dir dbt
+.\.venv\Scripts\dbt.exe build --project-dir dbt --profiles-dir dbt
 ```
 
 The exporter uses `AUCTIONHOUSE_ADMIN_COOKIE` and defaults to `http://127.0.0.1:8080`. The manifest's `exportedAt` is the export time, not a claimed source snapshot timestamp. Reuse the original manifest rather than regenerating it for an existing cut.
@@ -35,13 +35,13 @@ warehouse/.venv/Scripts/python.exe warehouse/tools/run_cut.py --manifest warehou
 
 The capture tool writes only `event_cuts` and `event_cut_members`, atomically, and reads the source/sink thereafter. An incomplete sink produces exit 2 and prints its cut ID; reuse that ID with `--cut` after delivery completes. The run tool requires a new output directory, writes raw logs and JSON reports, builds dbt each time and verifies a new replacement database. Each run replays the same sink export.
 
-For controlled reconstruction, stop the single ingestion writer and use a fresh target:
+For controlled reconstruction, return to the `warehouse` directory, stop the single ingestion writer and use a fresh target:
 
 ```powershell
-auction-warehouse rebuild --database data/events.duckdb --target data/replacement.duckdb
+.\.venv\Scripts\auction-warehouse.exe rebuild --database data/events.duckdb --target data/replacement.duckdb
 ```
 
-Then point dbt at the replacement, run `dbt build`, reconcile the original cut and switch the application configuration only after reviewing the results. Rebuild never overwrites or automatically replaces the source.
+Then point dbt at the replacement, run `.\.venv\Scripts\dbt.exe build --project-dir dbt --profiles-dir dbt`, reconcile the original cut and switch the application configuration only after reviewing the results. Rebuild never overwrites or automatically replaces the source.
 
 `ingest` returns exit 1 if any input was quarantined. `reconcile` returns 0 for complete success, 2 for pending delivery, and 1 for missing/unexpected/duplicate-effect/quarantine failures. Duplicate delivery attempts are informational and remain queryable.
 
