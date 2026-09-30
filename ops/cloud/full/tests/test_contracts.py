@@ -191,6 +191,7 @@ class ReleaseContracts(unittest.TestCase):
         if existing: state.write_text(json.dumps(old), encoding='utf-8')
         (full / 'host-config.json').write_text('{}', encoding='utf-8')
         (full / 'smoke.sh').write_text('#!/bin/bash\nsmoke_stub\n', encoding='utf-8', newline='\n')
+        (full / 'smoke.sh').chmod(0o700)
         body = (FULL / 'release.sh').read_text(encoding='utf-8')
         body = body.replace('[[ $EUID == 0 ]]', '[[ 1 == 1 ]]')
         body = body.replace('/opt/auctionhouse/full', posix + '/opt').replace('/var/lib/auctionhouse/full', posix + '/state').replace('/run/', posix + '/run/')
