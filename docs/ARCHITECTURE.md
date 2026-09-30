@@ -13,7 +13,7 @@ auctionhouse is an online auction service written as a modular monolith in Java 
 | `notify` | local transactional notification sink with effect-plus-dedup |
 | `cache` | `CacheStore` interface; memcached-text client; cache-aside layer |
 | `warehouse` | event validation; idempotent DuckDB load; dbt models; reconciliation |
-| `web` | REST controllers; optional SSE endpoint |
+| `web` | REST controllers; SSE endpoint for live bids |
 | `ops` | health, metrics, OpenTelemetry |
 
 ## Data flow

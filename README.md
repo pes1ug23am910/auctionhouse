@@ -22,7 +22,7 @@ common watermark.
 - Outbox relay with retry state and atomic effect-plus-dedup
 - Cache-aside layer: lookup, fill, invalidate, failure fallback
 - Event warehouse with dbt models and reconciliation
-- Optional front end (React, TypeScript, Server-Sent Events)
+- Front end (React, TypeScript, Server-Sent Events)
 - Load test and observability (k6, OpenTelemetry, Grafana)
 
 ## Toolchain

@@ -12,7 +12,7 @@ auctionhouse is an online auction service written as a modular monolith in Java 
 
 ## Interfaces
 
-REST (JSON): `POST /auctions`, `GET /auctions/{id}`, `POST /auctions/{id}/bids` (header `Idempotency-Key`), `GET /auctions/{id}/bids`, `GET /me`. Optional: `GET /auctions/{id}/events` (SSE).
+REST (JSON): `POST /auctions`, `GET /auctions/{id}`, `POST /auctions/{id}/bids` (header `Idempotency-Key`), `GET /auctions/{id}/bids`, `GET /me`. `GET /auctions/{id}/events` (SSE).
 
 Cache: `interface CacheStore { Optional<byte[]> get(String key); void set(String key, byte[] value, Duration ttl); void delete(String key); }` with adapters for memcached and for pagekv's protocol subset.
 
