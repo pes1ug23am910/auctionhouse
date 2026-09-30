@@ -60,7 +60,7 @@ test('README OIDC accounts publish, bid, reconnect and reach the fixed-deadline 
     await sellerPage.getByLabel('Opening bid').fill('100');
     await sellerPage.getByLabel('Minimum increment').fill('10');
     const deadline = new Date(Date.now() + 45_000);
-    const localDeadline = new Date(deadline.getTime() - deadline.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+    const localDeadline = new Date(deadline.getTime() - deadline.getTimezoneOffset() * 60_000).toISOString().slice(0, 19).replace(/:00$/, '');
     await sellerPage.getByLabel('Auction ends').fill(localDeadline);
     await sellerPage.getByRole('button', { name: 'Create draft' }).click();
     await expect(sellerPage.getByRole('heading', { name: title, exact: true })).toBeVisible();

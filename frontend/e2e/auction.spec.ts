@@ -22,7 +22,7 @@ test('real auction publishes, recovers a disconnected viewer, and closes with it
     await page.getByLabel('Opening bid').fill('100');
     await page.getByLabel('Minimum increment').fill('10');
     const deadline = new Date(Date.now() + 45_000);
-    const localDeadline = new Date(deadline.getTime() - deadline.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+    const localDeadline = new Date(deadline.getTime() - deadline.getTimezoneOffset() * 60_000).toISOString().slice(0, 19).replace(/:00$/, '');
     await page.getByLabel('Auction ends').fill(localDeadline);
     await page.getByRole('button', { name: 'Create draft' }).click();
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
