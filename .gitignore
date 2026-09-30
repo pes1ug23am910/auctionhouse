@@ -1,0 +1,43 @@
+# OS and editors
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.vscode/
+.idea/
+*.iml
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local scratch
+/tmp/
+/scratch/
+*.log
+
+# Java / Gradle
+.gradle/
+/build/
+**/build/
+!src/**/build/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+/out/
+/bin/
+.settings/
+.classpath
+.project
+.factorypath
+
+# Front end (optional module)
+node_modules/
+/dist/
+.vite/
+playwright-report/
+test-results/
