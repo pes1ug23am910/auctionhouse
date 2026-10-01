@@ -1,17 +1,39 @@
 # Image review: 1 October 2026
 
-**Release image publication remains blocked by the configured vulnerability
-policy.** Source publication and passing functional tests do not establish that
-an image passed this gate. There are no project suppressions or accepted-risk
-exceptions. Run both release workflows against the intended commit to obtain
-current, exact-artifact results; the local observations below are development
-candidate evidence, not a released artifact or an AWS scan.
+**Full release image publication remains blocked by the configured vulnerability
+policy.** The application's thin verification passes; gateway and warehouse
+findings block the full release. There are no project suppressions or
+accepted-risk exceptions. These are build and scan results, not a deployment
+or an AWS scan.
 
-The local review used Syft 1.52.0, Grype 0.119.0 and database schema 6.1.9 built
+Hosted verification of [commit 2eca9b0](https://github.com/pes1ug23am910/auctionhouse/commit/2eca9b0d38058ac2dad1d8d71c41a5c4235a8386)
+completed on 1 October 2026. The [thin run](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36795616768)
+passed. The [full run](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36795613279)
+passed its functional, database, rollback and container checks, then stopped
+at the vulnerability policy after scanning all three images. Both deployment
+jobs were skipped; only small security reports were uploaded.
+
+| Full-run image | Packages | Critical | High | Unknown | Medium | Low | Negligible | Blocking matches |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Application | 203 | 0 | 0 | 0 | 62 | 6 | 3 | 0 |
+| Gateway | 82 | 0 | 54 | 8 | 54 | 16 | 44 | 62 |
+| Warehouse | 200 | 0 | 65 | 12 | 69 | 20 | 68 | 77 |
+
+Every hosted image passed exact config-digest identity, ordered layer, platform
+and package-coverage checks. Each run's retained reports bind full image IDs
+and SBOM/findings hashes to the source revision. The separately built thin
+application had the same package and finding counts; it is a different image
+ID. Both application images' verified 93-component agent inventories had zero
+matches in the dated database. No scanner error caused the full-run rejection.
+
+Hosted scans and the earlier local review used Syft 1.52.0, Grype 0.119.0 and database schema 6.1.9 built
 at 2026-09-30 06:32:47 UTC. Reports retain all severities, package versions,
 advisory links, daemon image IDs, config and layer digests, and matcher
 suppression reasons. Package-match totals can contain several binary packages
 from one affected source package. They are not counts of distinct CVEs.
+Earlier local scans remain development-candidate evidence; the linked hosted
+runs establish the images built from `2eca9b0`. Rerun the workflows
+for a changed release artifact or a newer vulnerability database.
 
 Supported fixes applied:
 

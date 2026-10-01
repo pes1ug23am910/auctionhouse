@@ -187,6 +187,19 @@ class ProfilingContracts(unittest.TestCase):
         self.assertAlmostEqual(.15, report["hostBusyFraction"])
         self.assertEqual(4, report["postgresWaitConnectionSamples"]["Lock:transactionid"])
 
+    def test_blocked_connections_sum_wait_groups_before_taking_snapshot_peak(self):
+        data = [resource(1), resource(2)]
+        data[0]["postgres"] = [
+            {"waitType": "Lock", "waitEvent": "transactionid", "connections": 4, "blocked": 4},
+            {"waitType": "Lock", "waitEvent": "tuple", "connections": 3, "blocked": 3}]
+        data[1]["postgres"] = [
+            {"waitType": "Lock", "waitEvent": "transactionid", "connections": 5, "blocked": 5},
+            {"waitType": "Lock", "waitEvent": "tuple", "connections": 1, "blocked": 1}]
+        report = resource_report(data)
+        self.assertEqual(7, report["maxObservedBlockedPgConnections"])
+        self.assertEqual({"Lock:transactionid": 9, "Lock:tuple": 4},
+                         report["postgresWaitConnectionSamples"])
+
     def test_sampler_failures_and_large_gaps_are_not_hidden(self):
         self.assertFalse(resource_report([resource(1), resource(20)])["valid"])
         data = [resource(1), resource(2)]

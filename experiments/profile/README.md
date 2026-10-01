@@ -29,3 +29,7 @@ python -m unittest discover -s experiments/profile -p 'test_*.py' -v
 ```
 
 Use **Actions > Bounded contention profiling (manual) > Run workflow** for actual collection. There are no deployment inputs. Hosted timing and instrumentation validation are established only by the resulting run artifacts, not by the helper tests or workflow definition.
+
+## Recorded result
+
+[Run 36794785555](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36794785555) at source `85f0ad0255db2be9fa73750bb3dd1756cb062504` completed all diagnostics, all eight durable reconciliations and cleanup. Its final acceptance step failed because three measured variants dropped operations; those k6 exit-99 results remain intact. The [full result and limits](../../docs/OBSERVABILITY.md#completed-isolated-campaign) preserve the pool-order comparison, exact artifact identity, acquisition buckets and resource observations. No default pool change or production-capacity conclusion follows from this short experiment.

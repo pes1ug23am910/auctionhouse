@@ -182,7 +182,7 @@ def resource_report(samples):
     for sample in samples:
         for row in sample.get("postgres", []):
             waits[(row.get("waitType") or "none") + ":" + (row.get("waitEvent") or "none")] += row["connections"]
-            blocking = max(blocking, row["blocked"])
+        blocking = max(blocking, sum(row["blocked"] for row in sample.get("postgres", [])))
     cpu_delta = [b - a for a, b in zip(first["cpuTicks"], last["cpuTicks"])]
     total = sum(cpu_delta[:8])  # guest/guest_nice are already included in user/nice.
     elapsed = last["monotonic"] - first["monotonic"]
