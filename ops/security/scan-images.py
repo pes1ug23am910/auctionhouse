@@ -31,6 +31,13 @@ AGENT_JAR_SHA256 = 'bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3
 AGENT_SBOM_SHA256 = '432b9ad8dd2a420c3770d2d2dc9b5e10bbcfae2200bef4a18a9793ffe0b0bf67'
 
 
+class ScanFailure(RuntimeError):
+    def __init__(self, code, diagnostics=None):
+        super().__init__(code)
+        self.code = code
+        self.diagnostics = diagnostics or {}
+
+
 def sha256(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -90,7 +97,9 @@ def execute(command, env, cwd, timeout=900):
                             encoding='utf-8', errors='replace', timeout=timeout)
     if result.returncode:
         # Scanner stderr may contain local paths/configuration; keep failure output bounded.
-        raise RuntimeError(f'{Path(str(command[0])).stem} failed with exit {result.returncode}')
+        tool = Path(str(command[0])).stem
+        raise ScanFailure('scanner-command-failed', {'tool': tool if tool in ('syft', 'grype', 'docker') else 'other',
+                                                    'exitCode': result.returncode})
     return result.stdout
 
 
@@ -125,14 +134,17 @@ def sbom_report(sbom, image_id, revision, inspected):
     config_digest = 'sha256:' + hashlib.sha256(config_bytes).hexdigest()
     config = json.loads(config_bytes)
     layers = config.get('rootfs', {}).get('diff_ids', [])
-    if (inspected.get('Id') != image_id or metadata.get('userInput') != image_id
-            or config_digest != metadata.get('imageID') or not layers
-            or layers != inspected.get('RootFS', {}).get('Layers')
-            or any(not DIGEST.fullmatch(layer) for layer in layers)
-            or config.get('os') != 'linux' or config.get('architecture') != 'amd64'
-            or config.get('os') != inspected.get('Os') or config.get('architecture') != inspected.get('Architecture')
-            or config.get('config') != inspected.get('Config')):
-        raise RuntimeError('SBOM config/layer identity differs from the inspected local artifact')
+    checks = {'inspectedId': inspected.get('Id') == image_id, 'requestedId': metadata.get('userInput') == image_id,
+              'configDigest': config_digest == metadata.get('imageID'), 'nonemptyLayers': bool(layers),
+              'orderedLayers': layers == inspected.get('RootFS', {}).get('Layers'),
+              'layerDigests': all(DIGEST.fullmatch(layer) for layer in layers),
+              'linuxAmd64': config.get('os') == 'linux' and config.get('architecture') == 'amd64',
+              'inspectedPlatform': config.get('os') == inspected.get('Os') and config.get('architecture') == inspected.get('Architecture'),
+              'configuration': config.get('config') == inspected.get('Config'),
+              'daemonIdIsConfigDigest': inspected.get('Id') == config_digest}
+    required = [value for key, value in checks.items() if key != 'daemonIdIsConfigDigest']
+    if not all(required):
+        raise ScanFailure('image-identity-check-failed', {'identityChecks': checks})
     packages = [package_facts(item) for item in sbom.get('artifacts', [])]
     if not packages or not any(item.get('type') == 'deb' for item in packages):
         raise RuntimeError('Release SBOM contains no expected OS package inventory')
@@ -318,9 +330,10 @@ def main():
                 inspected = inspect_image(image_id, env, work)
                 validate_release_image(inspected, image_id, args.revision, args.baseline)
                 raw_sbom = work / f'{name}.json'
-                stage = name + ' package inventory'
+                stage = name + ' Syft scan'
                 execute([syft, '-c', syft_config, 'scan', 'docker:' + image_id, '--parallelism', '2',
                          '-o', 'syft-json=' + str(raw_sbom)], env, work)
+                stage = name + ' SBOM identity and catalog validation'
                 raw_inventory = json.loads(raw_sbom.read_text(encoding='utf-8'))
                 inventory = sbom_report(raw_inventory, image_id, args.revision, inspected)
                 save(args.output / f'{name}.sbom.json', inventory)
@@ -347,6 +360,9 @@ def main():
     except Exception as error:
         summary['errorType'] = type(error).__name__
         summary['failedStage'] = stage
+        if isinstance(error, ScanFailure):
+            summary['failureCode'] = error.code
+            summary['diagnostics'] = error.diagnostics
         raise SystemExit(f'Image scan failed during {stage} ({type(error).__name__}); release is blocked') from None
     finally:
         save(args.output / 'summary.json', summary)

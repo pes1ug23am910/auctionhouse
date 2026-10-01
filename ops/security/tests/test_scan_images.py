@@ -167,6 +167,15 @@ class ImageScanContracts(unittest.TestCase):
         valid = dict(INSPECTED, Config={'Labels': {'org.opencontainers.image.revision': REVISION}})
         SCAN.validate_release_image(valid, IMAGE, REVISION, False)
 
+    def test_identity_failure_diagnostics_contain_booleans_not_raw_configuration(self):
+        inspected = dict(INSPECTED, Config={'Env': ['PASSWORD=must-not-export']})
+        with self.assertRaises(SCAN.ScanFailure) as failure:
+            SCAN.sbom_report(self.sbom(), IMAGE, REVISION, inspected)
+        self.assertEqual(failure.exception.code, 'image-identity-check-failed')
+        self.assertFalse(failure.exception.diagnostics['identityChecks']['configuration'])
+        self.assertTrue(all(isinstance(value, bool) for value in failure.exception.diagnostics['identityChecks'].values()))
+        self.assertNotIn('must-not-export', json.dumps(failure.exception.diagnostics))
+
     def test_invalid_or_stale_database_is_rejected(self):
         current = SCAN.datetime.datetime.now(SCAN.datetime.timezone.utc)
         status = {'valid': True, 'built': current.isoformat(), 'schemaVersion': 'v6'}
