@@ -26,6 +26,7 @@ from analyze import (EVENTS, acquisition_report, jfr_report, performance, resour
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 K6 = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
+ACQUISITION_SLO = "1us,5us,10us,25us,50us,100us,250us,500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s,2s,5s"
 AGENT_SHA = "bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba"
 COMPOSE = ["docker", "compose", "-f", "compose.yaml", "-f", "compose.broker.yaml",
            "-f", "compose.cache.yaml", "-f", "compose.observability.yaml"]
@@ -250,7 +251,7 @@ def variant(index, pool, output, private, jar, agent, base_env):
         args = ["taskset", "-c", ",".join(map(str, cpus)), "java", "-Xms384m", "-Xmx384m", "-XX:ActiveProcessorCount=2",
             "-Duser.timezone=UTC", f"-javaagent:{agent}", f"-Dotel.javaagent.configuration-file={ROOT / 'observability/agent.properties'}",
             "-jar", str(jar), "--spring.profiles.active=local,broker,cache",
-            "--management.metrics.distribution.percentiles-histogram.hikaricp.connections.acquire=true"]
+            f"--management.metrics.distribution.slo.hikaricp.connections.acquire={ACQUISITION_SLO}"]
         app = subprocess.Popen(args, cwd=ROOT, env=env, stdout=logfile, stderr=subprocess.STDOUT)
         wait_url("http://127.0.0.1:8080/actuator/health/readiness", app)
         wait_url("http://127.0.0.1:9464/metrics", app)
@@ -383,6 +384,7 @@ def main():
         "appHeapMiB": 384, "appActiveProcessorCount": 2, "appAffinity": sorted(os.sched_getaffinity(0))[:2],
         "poolOrder": [2, 16, 16, 2], "freshDependenciesPerRun": True, "traceSampling": .1,
         "samplerNominalPeriodSeconds": 1, "containerStatsEverySamples": 5,
+        "acquisitionHistogramSloDurations": ACQUISITION_SLO.split(","),
         "load": {"warmupRate": 50, "warmupSeconds": 15, "rate": 100, "seconds": 45, "seed": 42,
                  "preallocatedVUs": 40, "maxVUs": 80, "k6CPUs": 1, "k6MemoryMiB": 256}})
     command(["docker", "pull", K6], timeout=180)

@@ -10,6 +10,10 @@ on:
         description: 'Reviewed migrations preserve compatibility with the previous image'
         type: boolean
         default: false
+      release_document_version:
+        description: 'Exact reviewed positive numeric SSM document version; required for deployment'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -43,6 +47,8 @@ jobs:
       - name: Teardown ownership guards without cloud commands
         shell: pwsh
         run: ./ops/Test-TeardownGuard.ps1
+      - name: Immutable SSM command construction without cloud commands
+        run: python -m unittest discover -s ops/cloud/tests -v
       - name: Backend and database integration checks
         run: bash ./gradlew --no-daemon --no-watch-fs test integrationTest
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -112,8 +118,11 @@ jobs:
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       INSTANCE_ID: ${{ vars.AUCTIONHOUSE_INSTANCE_ID }}
       RELEASE_DOCUMENT: ${{ vars.AUCTIONHOUSE_RELEASE_DOCUMENT }}
+      RELEASE_DOCUMENT_VERSION: ${{ inputs.release_document_version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Require the reviewed immutable document version before credentials
+        run: python ops/cloud/send-release-command.py --document-version "$RELEASE_DOCUMENT_VERSION" --validate-only
       - name: Download the exact tested image artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,8 +145,7 @@ jobs:
           docker push "$ECR_REPOSITORY:$tag"
           digest=$(aws ecr describe-images --repository-name "${ECR_REPOSITORY#*/}" --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)
           [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]]
-          jq -n --arg digest "$digest" '{Mode:["deploy"],Digest:[$digest],Compatibility:["schema-compatible"]}' > .release/parameters.json
-          command=$(aws ssm send-command --document-name "$RELEASE_DOCUMENT" --instance-ids "$INSTANCE_ID" --parameters file://.release/parameters.json --query Command.CommandId --output text)
+          command=$(python ops/cloud/send-release-command.py --document "$RELEASE_DOCUMENT" --document-version "$RELEASE_DOCUMENT_VERSION" --instance "$INSTANCE_ID" --digest "$digest" --region "$AWS_REGION" --output .release/command.json)
           status=Pending
           for attempt in $(seq 1 100); do
             status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
@@ -153,5 +161,6 @@ jobs:
         with:
           name: release-evidence
           path: |
+            .release/command.json
             .release/result.json
             .release/released-image.txt

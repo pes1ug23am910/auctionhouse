@@ -23,6 +23,10 @@ output "bootstrap_role_arn" {
 output "release_document" {
   value = aws_ssm_document.release.name
 }
+output "release_document_version" {
+  description = "Review this exact numeric document version before passing it to the thin release workflow."
+  value       = aws_ssm_document.release.latest_version
+}
 output "parameter_prefix" {
   value = local.parameter_prefix
 }
