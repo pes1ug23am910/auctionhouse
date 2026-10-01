@@ -124,8 +124,15 @@ def inspect_image(image_id, env, work):
 
 
 def package_facts(artifact):
+    if not isinstance(artifact, dict):
+        raise RuntimeError('Scanner package must be an object')
+    locations = artifact.get('locations')
+    if locations is None:
+        locations = []
+    if not isinstance(locations, list) or any(not isinstance(loc, dict) or not isinstance(loc.get('path'), str) for loc in locations):
+        raise RuntimeError('Scanner package locations must be an array of path objects or null')
     return {key: artifact[key] for key in ('id', 'name', 'version', 'type', 'purl', 'foundBy', 'language') if key in artifact} | {
-        'locations': sorted({loc['path'] for loc in artifact.get('locations', []) if isinstance(loc.get('path'), str)})}
+        'locations': sorted({loc['path'] for loc in locations})}
 
 
 def sbom_report(sbom, image_id, revision, inspected):

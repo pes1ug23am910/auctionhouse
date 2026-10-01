@@ -168,6 +168,51 @@ class ImageScanContracts(unittest.TestCase):
         valid = dict(INSPECTED, Config={'Labels': {'org.opencontainers.image.revision': REVISION}})
         SCAN.validate_release_image(valid, IMAGE, REVISION, False)
 
+    def test_nonempty_official_agent_report_with_null_locations_retains_blockers(self):
+        identifiers = ['GHSA-cxp5-3px4-pw24', 'GHSA-wv8q-qhhj-9h54']
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / ('otel-' + SCAN.AGENT_VERSION + '-SBOM.zip')
+            declared = {'packages': [{'name': 'javaagent', 'versionInfo': SCAN.AGENT_VERSION}] * 93}
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('sboms/opentelemetry-javaagent.spdx.json', json.dumps(declared))
+            raw = {'source': {'type': 'sbom-file', 'target': str(root / 'app.agent.spdx.json')},
+                   'matches': [{'vulnerability': {'id': identifier, 'severity': 'High',
+                                 'fix': {'state': 'fixed', 'versions': ['2.22.3']}},
+                                'artifact': {'name': 'jackson-databind', 'version': '2.22.2',
+                                             'type': 'java-archive', 'locations': None},
+                                'matchDetails': [{'type': 'exact-direct-match'}]}
+                               for identifier in identifiers]}
+            with patch.object(SCAN, 'AGENT_SBOM_SHA256', SCAN.sha256(archive)), patch.object(SCAN, 'execute', return_value=json.dumps(raw)):
+                summary = SCAN.scan_agent(self.agent_sbom(), 'grype', 'config', root, root, {}, root, IMAGE, REVISION)
+            saved = json.loads((root / 'app.agent.vulnerabilities.json').read_text(encoding='utf-8'))
+            self.assertEqual(summary['blockingFindings'], 2)
+            self.assertEqual(summary['severityCounts'], {'High': 2})
+            self.assertEqual(summary['findingsSha256'], SCAN.sha256(root / 'app.agent.vulnerabilities.json'))
+            self.assertEqual([row['vulnerability']['id'] for row in saved['findings']], identifiers)
+            self.assertTrue(all(row['package']['locations'] == [] for row in saved['findings']))
+
+    def test_missing_and_null_locations_preserve_active_and_suppressed_metadata(self):
+        for artifact in [{'name': 'fixture'}, {'name': 'fixture', 'locations': None}, {'name': 'fixture', 'locations': []}]:
+            with self.subTest(artifact=artifact):
+                match = {'vulnerability': {'id': 'GHSA-fixture', 'severity': 'High'}, 'artifact': artifact}
+                suppressed = dict(match, appliedIgnoreRules=[{'reason': 'vendor reports not affected'}])
+                report = SCAN.normalize_findings({'matches': [match], 'ignoredMatches': [suppressed]}, IMAGE, REVISION)
+                self.assertEqual(report['blockingFindings'], 1)
+                self.assertEqual(report['findings'][0]['package']['locations'], [])
+                self.assertEqual(report['matcherSuppressedCount'], 1)
+                self.assertEqual(report['matcherSuppressed'][0]['package']['locations'], [])
+                self.assertEqual(report['matcherSuppressed'][0]['appliedIgnoreRules'][0]['reason'], 'vendor reports not affected')
+
+    def test_malformed_package_locations_fail_closed_for_active_and_suppressed_matches(self):
+        artifacts = [None, [], 'package', *({'locations': value} for value in ['', {}, False, 0, ['path'], [None], [{}], [{'path': None}]])]
+        for artifact in artifacts:
+            for collection in ['matches', 'ignoredMatches']:
+                with self.subTest(artifact=artifact, collection=collection):
+                    raw = {'matches': [], collection: [{'vulnerability': {'id': 'GHSA-fixture', 'severity': 'High'}, 'artifact': artifact}]}
+                    with self.assertRaises(RuntimeError):
+                        SCAN.normalize_findings(raw, IMAGE, REVISION)
+
     def test_identity_failure_diagnostics_contain_booleans_not_raw_configuration(self):
         inspected = dict(INSPECTED, Config={'Env': ['PASSWORD=must-not-export']})
         with self.assertRaises(SCAN.ScanFailure) as failure:

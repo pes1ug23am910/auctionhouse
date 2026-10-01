@@ -1,10 +1,44 @@
 # Image review: 1 October 2026
 
-**Release image publication remains blocked by the configured vulnerability
-policy.** A newer database rematch also identifies application and telemetry-agent
-findings; the earlier thin verification pass is historical. There are no project suppressions or
+**Release image publication remains blocked.** The latest rebuilt images passed
+functional checks, but scanning stopped at a report-normalization defect.
+The newer retained-inventory rematch also identifies telemetry-agent and other
+blocking findings; the earlier thin verification pass is historical. There are no project suppressions or
 accepted-risk exceptions. These are build and scan results, not a deployment
 or an AWS scan.
+
+## Rebuilt images and incomplete scan at `3d7cb6e`
+
+The [1 October verification](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36850129531)
+built all three images from [commit 3d7cb6e](https://github.com/pes1ug23am910/auctionhouse/commit/3d7cb6e72f888c68c932cf83d08f780a1c038c16).
+Backend/PostgreSQL correctness, application packaging and rollback, and actual
+gateway/warehouse container checks passed. Fixture cleanup passed; image export
+and deployment were skipped.
+
+The new application inventory confirms `libssl3t64` and `openssl`
+`3.0.13-0ubuntu3.16`. Its 203 discovered packages had zero High, Critical or
+Unknown matches, 66 Medium, six Low and three Negligible matches against the
+database built at 2026-10-01 06:33:48 UTC. Image/config identity, ordered layers
+and application package coverage passed. The two previous application OpenSSL
+matches were absent. This is only the discovered inventory: the agent
+supplement did not finish, so the application release did not pass its gate.
+
+The helper raised a `TypeError` while normalizing a nonempty official-agent
+report whose optional package locations were `null`. Gateway and warehouse
+scanning had not started. This run therefore has **no complete three-image
+vulnerability result**, and failed because of the helper defect rather than
+a completed policy evaluation. Build logs confirm PCRE2 `10.46-1~deb13u3` was
+installed in both supplementary images; their rebuilt vulnerability counts
+remain unverified.
+
+The helper now accepts missing/null location metadata while rejecting malformed
+package and location shapes. Replaying the retained real agent report preserves
+both High findings, and the focused contracts pass on Windows and Linux.
+Identity, checksum, package-coverage and severity rules are unchanged. The
+corrected helper still requires a fresh hosted verification; the earlier
+completed scan and rematch results remain below.
+
+## Earlier completed hosted scan at `2eca9b0`
 
 Hosted verification of [commit 2eca9b0](https://github.com/pes1ug23am910/auctionhouse/commit/2eca9b0d38058ac2dad1d8d71c41a5c4235a8386)
 completed on 1 October 2026. The [thin run](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36795616768)
@@ -123,8 +157,8 @@ Remaining prerequisites include:
 
 | Component | Evidence and required next step |
 | --- | --- |
-| Application OpenSSL | The retained image contains `libssl3t64` and `openssl` `3.0.13-0ubuntu3.15`. [Ubuntu's CVE-2026-84782 record](https://ubuntu.com/security/CVE-2026-84782) fixes both in `3.0.13-0ubuntu3.16`, available in the official Noble security package index. The Dockerfile now pins that supported update; the rebuilt image still needs verification. The rematch does not contain this patch. |
-| Gateway and warehouse PCRE2 | The retained images contain `libpcre2-8-0` `10.46-1~deb13u2`. [Debian's CVE-2026-103111 record](https://security-tracker.debian.org/tracker/CVE-2026-103111) fixes it in `10.46-1~deb13u3`, available in the official Trixie security package index. Both Dockerfiles now pin that stable update; rebuilt-image verification is pending. |
+| Application OpenSSL | [Ubuntu's CVE-2026-84782 record](https://ubuntu.com/security/CVE-2026-84782) fixes `libssl3t64` and `openssl` in `3.0.13-0ubuntu3.16`. The `3d7cb6e` rebuilt inventory confirms both versions and no longer reports those two matches. The application still needs its complete agent-supplement scan. |
+| Gateway and warehouse PCRE2 | [Debian's CVE-2026-103111 record](https://security-tracker.debian.org/tracker/CVE-2026-103111) fixes `libpcre2-8-0` in `10.46-1~deb13u3`. Both Dockerfiles pin that stable update, and the `3d7cb6e` build logs confirm installation. Their fresh inventories and vulnerability results remain pending because scanning stopped earlier. |
 | Telemetry agent Jackson | The official agent inventory declares `jackson-databind` `2.22.2`. [GHSA-cxp5-3px4-pw24](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24) and [GHSA-wv8q-qhhj-9h54](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54) identify `2.22.3` as fixed. The official [latest agent release](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest) remained `2.31.1`, with the exact installed JAR and SBOM digests. No released agent containing the fix was found; await a supported release, verify its JAR and declared inventory, then test and scan it. Do not replace shaded libraries manually. Application reachability has not been established and no exception is granted. |
 | Python 3.13.15 | [PSF's advisory](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/82xxx/CVE-2026-82049.json) identifies versions before 3.13.16 as affected by a tar extraction filter flaw. [Python 3.13.16](https://www.python.org/downloads/release/python-31316/) fixes it, but the official `python:3.13.16-slim-trixie` tag was unavailable during this review. Adopt its verified digest when available, rerun warehouse tests and scan it. Application reachability has not been established; that does not make the installed vulnerable library a false positive. |
 | glibc on Trixie | [CVE-2026-19499](https://security-tracker.debian.org/tracker/CVE-2026-19499) remains marked vulnerable in the stable package. Debian classifies it as a minor issue without a stable security advisory; the configured High-severity scanner gate still blocks it. |
