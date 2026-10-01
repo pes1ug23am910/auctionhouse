@@ -12,7 +12,7 @@ FROM node:24.21.0-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="auctionhouse-gateway" org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade libssl3t64=3.5.7-1~deb13u3 openssl-provider-legacy=3.5.7-1~deb13u3 \
+    && apt-get install -y --no-install-recommends --only-upgrade libssl3t64=3.5.7-1~deb13u3 openssl-provider-legacy=3.5.7-1~deb13u3 libpcre2-8-0=10.46-1~deb13u3 \
     && rm -rf /var/lib/apt/lists/*
 RUN rm -rf /usr/local/lib/node_modules/npm /opt/yarn-* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg

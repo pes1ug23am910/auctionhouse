@@ -1,8 +1,8 @@
 # Image review: 1 October 2026
 
-**Full release image publication remains blocked by the configured vulnerability
-policy.** The application's thin verification passes; gateway and warehouse
-findings block the full release. There are no project suppressions or
+**Release image publication remains blocked by the configured vulnerability
+policy.** A newer database rematch also identifies application and telemetry-agent
+findings; the earlier thin verification pass is historical. There are no project suppressions or
 accepted-risk exceptions. These are build and scan results, not a deployment
 or an AWS scan.
 
@@ -32,8 +32,44 @@ advisory links, daemon image IDs, config and layer digests, and matcher
 suppression reasons. Package-match totals can contain several binary packages
 from one affected source package. They are not counts of distinct CVEs.
 Earlier local scans remain development-candidate evidence; the linked hosted
-runs establish the images built from `2eca9b0`. Rerun the workflows
-for a changed release artifact or a newer vulnerability database.
+runs establish the images built from `2eca9b0`.
+
+## Retained-inventory rematch with the 1 October database
+
+The same Grype 0.119.0 matched the retained full-run inventories against the
+checksum-verified schema 6.1.9 database built at **2026-10-01 06:33:48 UTC**.
+No images were rebuilt. Original report hashes, image/config identities,
+ordered layers and coverage records were verified before reuse.
+
+| Retained inventory | Packages | High / blocking matches | Medium | Low | Negligible |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Application, discovered packages | 203 | 2 | 66 | 16 | 3 |
+| Official agent supplement | 93 | 2 | 0 | 0 | 0 |
+| Gateway | 82 | 52 | 49 | 10 | 45 |
+| Warehouse | 200 | 60 | 61 | 11 | 69 |
+
+There were no Critical or Unknown findings in this rematch. The application
+and agent contribute four blocking matches together. Across these inventories,
+distinct blocking advisory IDs changed from 20 to 18; package-match totals
+changed from 139 to 116. Lower totals do not establish release acceptance.
+
+The retained compact CycloneDX documents omit CPE metadata. Regenerating
+missing CPEs with Grype's `--add-cpes-if-none` and the recorded distributions
+first reproduced every original match key, severity and matcher-suppressed
+key against the old database (71 application, 176 gateway, 234 warehouse and
+zero agent matches). The same method was then used for the new database.
+That observed equivalence cannot prove every future CPE identifier identical
+to the original scan. These are dated results for the retained `2eca9b0`
+inventories, not a fresh live inventory or a scan of the current source HEAD.
+Changed artifacts still require the full image build, checks and scan.
+
+Seven previously reported OpenSSL advisory IDs no longer match the fixed
+Debian packages. Six disappear from the blocking set entirely;
+`CVE-2026-84782` now matches the application's older Ubuntu OpenSSL instead.
+New blocking IDs also include `CVE-2026-102010`, `CVE-2026-103111` and the two
+Jackson advisories below. The zlib classification conflict and Python finding
+remain blocking. The severity policy, absence of project ignores and retained
+matcher-suppression reporting are unchanged.
 
 Supported fixes applied:
 
@@ -53,8 +89,9 @@ Supported fixes applied:
   `3.5.7-1~deb13u3` OpenSSL security packages. The primary Debian tracker lists
   this fix for [CVE-2026-35189](https://security-tracker.debian.org/tracker/CVE-2026-35189)
   and [CVE-2026-72897](https://security-tracker.debian.org/tracker/CVE-2026-72897),
-  while the dated scanner database still reports no fixed version. The raw
-  scanner result remains visible and blocking; the review does not override it.
+  while the original 30 September scanner database reported no fixed version.
+  The 1 October rematch now recognizes these Debian fixes; the historical raw
+  results are retained.
 
 A follow-up on 1 October reviewed all 20 distinct advisories behind the
 retained blocking matches, including all 19 Debian records. Seven OpenSSL
@@ -64,8 +101,11 @@ records now identify the already-installed `3.5.7-1~deb13u3` as fixed:
 [Debian's security update](https://security-tracker.debian.org/tracker/DSA-6531-1)
 is the package-level remediation; the earlier scanner database's matches
 remain unchanged in the recorded results. No additional stable-package fix
-was identified for the remaining Debian matches. The official Python image
-tag still returned HTTP 404 at 06:18 UTC.
+was identified for the remaining Debian matches during that initial review.
+The later rematch identified additional advisories with the supported fixes
+listed below. The official Python image tag still returned HTTP 404 at
+09:52 UTC, and the current Node 24/Python 3.13 Trixie aliases retained their
+existing pinned digests.
 
 One additional applicability conflict requires resolution. Both supplemental
 images contain `zlib1g` version `1:1.3.dfsg+really1.3.1-1+b1`. The
@@ -83,15 +123,20 @@ Remaining prerequisites include:
 
 | Component | Evidence and required next step |
 | --- | --- |
+| Application OpenSSL | The retained image contains `libssl3t64` and `openssl` `3.0.13-0ubuntu3.15`. [Ubuntu's CVE-2026-84782 record](https://ubuntu.com/security/CVE-2026-84782) fixes both in `3.0.13-0ubuntu3.16`, available in the official Noble security package index. The Dockerfile now pins that supported update; the rebuilt image still needs verification. The rematch does not contain this patch. |
+| Gateway and warehouse PCRE2 | The retained images contain `libpcre2-8-0` `10.46-1~deb13u2`. [Debian's CVE-2026-103111 record](https://security-tracker.debian.org/tracker/CVE-2026-103111) fixes it in `10.46-1~deb13u3`, available in the official Trixie security package index. Both Dockerfiles now pin that stable update; rebuilt-image verification is pending. |
+| Telemetry agent Jackson | The official agent inventory declares `jackson-databind` `2.22.2`. [GHSA-cxp5-3px4-pw24](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24) and [GHSA-wv8q-qhhj-9h54](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54) identify `2.22.3` as fixed. The official [latest agent release](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest) remained `2.31.1`, with the exact installed JAR and SBOM digests. No released agent containing the fix was found; await a supported release, verify its JAR and declared inventory, then test and scan it. Do not replace shaded libraries manually. Application reachability has not been established and no exception is granted. |
 | Python 3.13.15 | [PSF's advisory](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/82xxx/CVE-2026-82049.json) identifies versions before 3.13.16 as affected by a tar extraction filter flaw. [Python 3.13.16](https://www.python.org/downloads/release/python-31316/) fixes it, but the official `python:3.13.16-slim-trixie` tag was unavailable during this review. Adopt its verified digest when available, rerun warehouse tests and scan it. Application reachability has not been established; that does not make the installed vulnerable library a false positive. |
 | glibc on Trixie | [CVE-2026-19499](https://security-tracker.debian.org/tracker/CVE-2026-19499) remains marked vulnerable in the stable package. Debian classifies it as a minor issue without a stable security advisory; the configured High-severity scanner gate still blocks it. |
 | util-linux on Trixie | [CVE-2026-78408](https://security-tracker.debian.org/tracker/CVE-2026-78408) remains marked vulnerable in the stable package; the fix is in unstable. Do not mix unstable packages into the runtime merely to satisfy the scanner. |
 | ACL on Trixie | [CVE-2026-54369](https://security-tracker.debian.org/tracker/CVE-2026-54369) includes pathname-based functions in the installed `libacl1` library. It cannot be dismissed even if standalone ACL utilities are absent. Debian says the fix requires the newer ABI and is intended for a later point release. |
-| Other OS matches | Review every retained finding, including ACL, ncurses, Perl, zlib and OpenSSL records. A nonroot, read-only container or absence of a known application exploit does not automatically waive a package finding. |
+| GCC runtime packages | [CVE-2026-102010](https://security-tracker.debian.org/tracker/CVE-2026-102010) matches the installed `gcc-14-base`, `libgcc-s1` and `libstdc++6` `14.2.0-19`. Debian still marks the stable source package vulnerable without a fixed version. |
+| Other OS matches | Review every retained finding, including ncurses, Perl and zlib records. A nonroot, read-only container or absence of a known application exploit does not automatically waive a package finding. |
 
 The telemetry agent's exact embedded JAR was checked against its official,
 checksum-pinned 93-component SPDX inventory. That supplemental inventory had
-no matches in this dated database. This is separate from the discovered image
+no matches in the original 30 September database and two High matches in the
+1 October rematch. This is separate from the discovered image
 inventory, and is not a claim that all shaded code or future advisories are
 covered. Lower-severity image findings remain reported.
 

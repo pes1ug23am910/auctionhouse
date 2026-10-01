@@ -3,7 +3,7 @@ FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd218179
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="auctionhouse-warehouse" org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client libssl3t64=3.5.7-1~deb13u3 openssl=3.5.7-1~deb13u3 openssl-provider-legacy=3.5.7-1~deb13u3 \
+    && apt-get install -y --no-install-recommends postgresql-client libssl3t64=3.5.7-1~deb13u3 openssl=3.5.7-1~deb13u3 openssl-provider-legacy=3.5.7-1~deb13u3 libpcre2-8-0=10.46-1~deb13u3 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /warehouse
 COPY requirements.lock pyproject.toml ./

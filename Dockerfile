@@ -21,7 +21,7 @@ FROM eclipse-temurin:25-jre-noble@sha256:693fdaf83831eeeefd9709eae44c8b870662265
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="auctionhouse" org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade perl-base=5.38.2-3.2ubuntu0.6 \
+    && apt-get install -y --no-install-recommends --only-upgrade perl-base=5.38.2-3.2ubuntu0.6 libssl3t64=3.0.13-0ubuntu3.16 openssl=3.0.13-0ubuntu3.16 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /unpacked/BOOT-INF/classes/ classes/

@@ -135,4 +135,24 @@ Acquisition quantiles are bucket estimates over all pool callers and recorded ex
 
 ### Follow-up client-allocation hypothesis
 
-The same retained run's one-second terminal snapshots show final observed allocated-VU counts of 53/78/40/50, from 40 initially. Allocation growth equals the 13/38/0/10 recorded drops; none reached the maximum of 80. This is descriptive evidence about available client workers, not a causal attribution to allocation overhead or proof that server/session contention was absent. The [controlled preallocation experiment](../experiments/profile/README.md#optional-preallocation-experiment) tests 40/80/80/40 initial VUs with pool 16 and the maximum of 80 fixed. It preserves the workload and gates, records setup/scenario clocks separately, and retains all outcomes. Its implementation does not change the earlier workflow failure or supply new performance evidence before it is run.
+The same retained run's one-second terminal snapshots show final observed allocated-VU counts of 53/78/40/50, from 40 initially. Allocation growth equals the 13/38/0/10 recorded drops; none reached the maximum of 80. This is descriptive evidence about available client workers, not a causal attribution to allocation overhead or proof that server/session contention was absent. The [controlled preallocation experiment](../experiments/profile/README.md#optional-preallocation-experiment) tests 40/80/80/40 initial VUs with pool 16 and the maximum of 80 fixed. It preserves the workload and gates, records setup/scenario clocks separately, and retains all outcomes. Its completed result below leaves the earlier workflow failure intact and compares only the variants within the new campaign.
+
+## Completed preallocation campaign
+
+On **2026-10-01**, [run 36847502716](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36847502716) passed diagnostic execution and strict performance acceptance at source `4b6ddd39d5f5bfb94b3097102f39b32ab190e155`. Its single JAR SHA256 was `1a455719243040641d60d07ce2e1ab0af039665bbde928cde15de3ed49979dee`. The runner reported an **AMD EPYC 7763**, four CPUs, with the application's fixed two-CPU affinity and 384 MiB heap. Pool 16, the maximum of 80 VUs, k6's one CPU/256 MiB, shared bidder session/hot auction, seed 42, dependency images/limits and tracing were unchanged within the campaign. Every separate warm-up remained 50/s for 15 seconds with 40 preallocated VUs; measurement remained 100/s for 45 seconds.
+
+| Run order / preallocated VUs | 1 / 40 | 2 / 80 | 3 / 80 | 4 / 40 |
+|---|---:|---:|---:|---:|
+| Offered / completed operations | 4,501 / 4,501 | 4,501 / 4,501 | 4,501 / 4,501 | 4,501 / 4,501 |
+| Dropped / infrastructure errors | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Browse / accepted bid operations | 3,376 / 1,125 | 3,376 / 1,125 | 3,376 / 1,125 | 3,376 / 1,125 |
+| Logical latency p50 / p95 / p99, ms | 4 / 11 / 17 | 4 / 10 / 15 | 4 / 10 / 17 | 4 / 10 / 16 |
+| Committed events / unique sink effects | 1,127 / 1,127 | 1,127 / 1,127 | 1,127 / 1,127 | 1,127 / 1,127 |
+| Peak observed allocated VUs | 40 | 80 | 80 | 40 |
+| k6 exit code | 0 | 0 | 0 | 0 |
+
+All eight warm-up/measured durable reconciliations passed on distinct fixture auctions. Each measured run had zero business rejections, pending events or bid-progression violations; accepted intents, bid histories and final state matched. Independent reconstruction of the seed-42 iteration mix matched every phase. Actual client settings and published script/configuration hashes, run order, one JAR hash, dependency identities and cleanup records were verified. The downloaded artifact's SHA256 matched the GitHub API digest; its 95 extracted files matched the archive bytes.
+
+Raw acquisition, resource and selected JFR data reproduce all four diagnostic summaries. There were no sampler errors; the largest recorded gap was 2.780 seconds. Available memory stayed above 13.30 GiB, with no increase in application major-fault, swap or OOM-kill counters. No blocked PostgreSQL connection appeared in the sampled snapshots. Acquisition p95 bucket estimates were approximately 2.439/2.487/2.006/0.995 microseconds, and maximum recorded GC pauses were 23.97/21.74/22.20/21.95 ms. Those samples and estimates do not prove the absence of short waits or unobserved peaks.
+
+Both **40-VU controls also passed without allocation growth**. Preallocating 80 instead of 40 changed paired p95 by -1 ms and 0 ms, with zero change in drops or valid completion; this experiment does not demonstrate a preallocation benefit. The previous campaign used another JAR and an AMD EPYC 9V74 runner. Its strict failures remain valid, and the timing difference between campaigns cannot be attributed to this intervention. Defaults are unchanged. The new result establishes the stated gates only for four short runs on this artifact and local topology, not sustained production capacity, a stable SLO or the pending actual AWS one-host/two-host comparison.
