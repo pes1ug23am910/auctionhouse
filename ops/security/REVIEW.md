@@ -1,11 +1,45 @@
 # Image review: 1 October 2026
 
-**Release image publication remains blocked.** The latest rebuilt images passed
-functional checks, but scanning stopped at a report-normalization defect.
-The newer retained-inventory rematch also identifies telemetry-agent and other
-blocking findings; the earlier thin verification pass is historical. There are no project suppressions or
+**Release image publication remains blocked by the vulnerability policy.**
+The `bd78f33` verification completed functional checks and all image scans;
+112 High package/advisory matches remain, including two in the telemetry agent.
+The earlier thin verification pass is historical. There are no project suppressions or
 accepted-risk exceptions. These are build and scan results, not a deployment
 or an AWS scan.
+
+## Completed rebuilt-image scan at `bd78f33`
+
+The [1 October verification](https://github.com/pes1ug23am910/auctionhouse/actions/runs/36852257229)
+of [commit bd78f33](https://github.com/pes1ug23am910/auctionhouse/commit/bd78f33a63641c4e57c0a6804e9dcb135f321e01)
+built and tested all three images, including application rollback and actual
+gateway/warehouse container checks. Every image passed exact config-digest,
+ordered-layer, platform and expected package-coverage checks. The official
+93-component agent supplement also completed with its JAR/archive checks.
+Scanning finished without a helper error and rejected the release under the
+unchanged severity policy. Cleanup passed; image export and deployment were
+skipped.
+
+| Rebuilt inventory | Packages | High / blocking matches | Medium | Low | Negligible |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Application, discovered packages | 203 | 0 | 66 | 6 | 3 |
+| Official agent supplement | 93 | 2 | 0 | 0 | 0 |
+| Gateway | 82 | 51 | 49 | 10 | 45 |
+| Warehouse | 200 | 59 | 61 | 11 | 69 |
+
+There were no Critical or Unknown matches. The application release has two
+blocking matches in total, both from its agent supplement. The complete
+release has **112 blocking matches across 16 distinct advisory IDs**; these
+are different measures, and the agent is counted once. Syft 1.52.0 and Grype
+0.119.0 used the valid schema 6.1.9 database built at
+**2026-10-01 06:33:48 UTC**. The retained artifact archive, reports, inventories
+and source/image identities were checked against their recorded hashes.
+
+Fresh inventories confirm application OpenSSL `3.0.13-0ubuntu3.16` and both
+supplementary images' PCRE2 `10.46-1~deb13u3`. `CVE-2026-84782` and
+`CVE-2026-103111` no longer appear. Jackson, Python and remaining OS findings,
+including the zlib classification conflict, still block release. The vendor
+prerequisite checks below remain dated observations; this build did not check
+for another upstream release or grant an exception.
 
 ## Rebuilt images and incomplete scan at `3d7cb6e`
 
@@ -35,8 +69,8 @@ The helper now accepts missing/null location metadata while rejecting malformed
 package and location shapes. Replaying the retained real agent report preserves
 both High findings, and the focused contracts pass on Windows and Linux.
 Identity, checksum, package-coverage and severity rules are unchanged. The
-corrected helper still requires a fresh hosted verification; the earlier
-completed scan and rematch results remain below.
+subsequent `bd78f33` verification above completed those scans; the failed run
+and its partial results remain preserved.
 
 ## Earlier completed hosted scan at `2eca9b0`
 
@@ -157,8 +191,8 @@ Remaining prerequisites include:
 
 | Component | Evidence and required next step |
 | --- | --- |
-| Application OpenSSL | [Ubuntu's CVE-2026-84782 record](https://ubuntu.com/security/CVE-2026-84782) fixes `libssl3t64` and `openssl` in `3.0.13-0ubuntu3.16`. The `3d7cb6e` rebuilt inventory confirms both versions and no longer reports those two matches. The application still needs its complete agent-supplement scan. |
-| Gateway and warehouse PCRE2 | [Debian's CVE-2026-103111 record](https://security-tracker.debian.org/tracker/CVE-2026-103111) fixes `libpcre2-8-0` in `10.46-1~deb13u3`. Both Dockerfiles pin that stable update, and the `3d7cb6e` build logs confirm installation. Their fresh inventories and vulnerability results remain pending because scanning stopped earlier. |
+| Application OpenSSL — verified | [Ubuntu's CVE-2026-84782 record](https://ubuntu.com/security/CVE-2026-84782) fixes `libssl3t64` and `openssl` in `3.0.13-0ubuntu3.16`. The completed `bd78f33` inventory confirms both versions and no longer reports those two matches. The separate agent findings remain blocking. |
+| Gateway and warehouse PCRE2 — verified | [Debian's CVE-2026-103111 record](https://security-tracker.debian.org/tracker/CVE-2026-103111) fixes `libpcre2-8-0` in `10.46-1~deb13u3`. Both fresh `bd78f33` inventories confirm that stable version and no longer report this advisory. Other findings remain blocking. |
 | Telemetry agent Jackson | The official agent inventory declares `jackson-databind` `2.22.2`. [GHSA-cxp5-3px4-pw24](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-cxp5-3px4-pw24) and [GHSA-wv8q-qhhj-9h54](https://github.com/FasterXML/jackson-databind/security/advisories/GHSA-wv8q-qhhj-9h54) identify `2.22.3` as fixed. The official [latest agent release](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest) remained `2.31.1`, with the exact installed JAR and SBOM digests. No released agent containing the fix was found; await a supported release, verify its JAR and declared inventory, then test and scan it. Do not replace shaded libraries manually. Application reachability has not been established and no exception is granted. |
 | Python 3.13.15 | [PSF's advisory](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/82xxx/CVE-2026-82049.json) identifies versions before 3.13.16 as affected by a tar extraction filter flaw. [Python 3.13.16](https://www.python.org/downloads/release/python-31316/) fixes it, but the official `python:3.13.16-slim-trixie` tag was unavailable during this review. Adopt its verified digest when available, rerun warehouse tests and scan it. Application reachability has not been established; that does not make the installed vulnerable library a false positive. |
 | glibc on Trixie | [CVE-2026-19499](https://security-tracker.debian.org/tracker/CVE-2026-19499) remains marked vulnerable in the stable package. Debian classifies it as a minor issue without a stable security advisory; the configured High-severity scanner gate still blocks it. |
@@ -169,8 +203,8 @@ Remaining prerequisites include:
 
 The telemetry agent's exact embedded JAR was checked against its official,
 checksum-pinned 93-component SPDX inventory. That supplemental inventory had
-no matches in the original 30 September database and two High matches in the
-1 October rematch. This is separate from the discovered image
+no matches in the original 30 September database and two High matches in both
+the 1 October rematch and completed `bd78f33` scan. This is separate from the discovered image
 inventory, and is not a claim that all shaded code or future advisories are
 covered. Lower-severity image findings remain reported.
 
