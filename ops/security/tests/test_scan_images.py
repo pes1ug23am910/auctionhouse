@@ -17,7 +17,8 @@ REVISION = 'b' * 40
 CONFIG = {'architecture': 'amd64', 'os': 'linux', 'rootfs': {'diff_ids': ['sha256:' + 'c' * 64]}, 'config': {}}
 CONFIG_BYTES = json.dumps(CONFIG).encode()
 CONFIG_DIGEST = 'sha256:' + hashlib.sha256(CONFIG_BYTES).hexdigest()
-INSPECTED = {'Id': IMAGE, 'Os': 'linux', 'Architecture': 'amd64', 'RootFS': {'Layers': CONFIG['rootfs']['diff_ids']}, 'Config': {}}
+INSPECTED = {'Id': IMAGE, 'Os': 'linux', 'Architecture': 'amd64', 'RootFS': {'Layers': CONFIG['rootfs']['diff_ids']}, 'Config': {},
+             'Descriptor': {'digest': IMAGE, 'mediaType': 'application/vnd.oci.image.index.v1+json'}}
 
 
 class ImageScanContracts(unittest.TestCase):
@@ -175,6 +176,35 @@ class ImageScanContracts(unittest.TestCase):
         self.assertFalse(failure.exception.diagnostics['identityChecks']['configuration'])
         self.assertTrue(all(isinstance(value, bool) for value in failure.exception.diagnostics['identityChecks'].values()))
         self.assertNotIn('must-not-export', json.dumps(failure.exception.diagnostics))
+
+    def test_classic_daemon_config_digest_binds_despite_api_added_defaults(self):
+        sbom = self.sbom()
+        sbom['source']['metadata']['userInput'] = CONFIG_DIGEST
+        inspected = dict(INSPECTED, Id=CONFIG_DIGEST, Config={'Hostname': '', 'AttachStdin': False})
+        inspected.pop('Descriptor')
+        report = SCAN.sbom_report(sbom, CONFIG_DIGEST, REVISION, inspected)
+        self.assertEqual(report['identityBinding'], 'exact-config-digest')
+
+    def test_classic_raw_config_or_layers_cannot_change_even_with_matching_config_fields(self):
+        for change in ('raw-config', 'layers'):
+            sbom = self.sbom()
+            sbom['source']['metadata']['userInput'] = CONFIG_DIGEST
+            inspected = dict(INSPECTED, Id=CONFIG_DIGEST)
+            inspected.pop('Descriptor')
+            if change == 'raw-config':
+                altered = dict(CONFIG, created='2026-01-01T00:00:00Z')
+                data = json.dumps(altered).encode()
+                sbom['source']['metadata'].update(config=base64.b64encode(data).decode(), imageID='sha256:' + hashlib.sha256(data).hexdigest())
+            else:
+                inspected['RootFS'] = {'Layers': ['sha256:' + 'e' * 64]}
+            with self.assertRaises(SCAN.ScanFailure):
+                SCAN.sbom_report(sbom, CONFIG_DIGEST, REVISION, inspected)
+
+    def test_non_config_id_requires_an_explicit_matching_index_descriptor(self):
+        for descriptor in [None, {'digest': IMAGE, 'mediaType': 'unknown'},
+                           {'digest': CONFIG_DIGEST, 'mediaType': 'application/vnd.oci.image.index.v1+json'}]:
+            with self.assertRaises(SCAN.ScanFailure):
+                SCAN.sbom_report(self.sbom(), IMAGE, REVISION, dict(INSPECTED, Descriptor=descriptor))
 
     def test_invalid_or_stale_database_is_rejected(self):
         current = SCAN.datetime.datetime.now(SCAN.datetime.timezone.utc)

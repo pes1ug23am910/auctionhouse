@@ -134,6 +134,7 @@ def sbom_report(sbom, image_id, revision, inspected):
     config_digest = 'sha256:' + hashlib.sha256(config_bytes).hexdigest()
     config = json.loads(config_bytes)
     layers = config.get('rootfs', {}).get('diff_ids', [])
+    descriptor = inspected.get('Descriptor') or {}
     checks = {'inspectedId': inspected.get('Id') == image_id, 'requestedId': metadata.get('userInput') == image_id,
               'configDigest': config_digest == metadata.get('imageID'), 'nonemptyLayers': bool(layers),
               'orderedLayers': layers == inspected.get('RootFS', {}).get('Layers'),
@@ -141,9 +142,14 @@ def sbom_report(sbom, image_id, revision, inspected):
               'linuxAmd64': config.get('os') == 'linux' and config.get('architecture') == 'amd64',
               'inspectedPlatform': config.get('os') == inspected.get('Os') and config.get('architecture') == inspected.get('Architecture'),
               'configuration': config.get('config') == inspected.get('Config'),
-              'daemonIdIsConfigDigest': inspected.get('Id') == config_digest}
-    required = [value for key, value in checks.items() if key != 'daemonIdIsConfigDigest']
-    if not all(required):
+              'daemonIdIsConfigDigest': inspected.get('Id') == config_digest,
+              'daemonIdIsIndexDigest': descriptor.get('digest') == image_id and descriptor.get('mediaType') in
+                  ('application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json')}
+    required = [value for key, value in checks.items() if key not in ('configuration', 'daemonIdIsConfigDigest', 'daemonIdIsIndexDigest')]
+    # Classic daemons identify the exact config bytes; their inspect API may add
+    # default fields. An index reference additionally needs the inspected config.
+    identity_bound = checks['daemonIdIsConfigDigest'] or (checks['daemonIdIsIndexDigest'] and checks['configuration'])
+    if not all(required) or not identity_bound:
         raise ScanFailure('image-identity-check-failed', {'identityChecks': checks})
     packages = [package_facts(item) for item in sbom.get('artifacts', [])]
     if not packages or not any(item.get('type') == 'deb' for item in packages):
@@ -153,6 +159,7 @@ def sbom_report(sbom, image_id, revision, inspected):
         raise RuntimeError('Release SBOM has no recognized versioned operating system')
     return {'schemaVersion': 1, 'format': 'auctionhouse-package-inventory', 'imageId': image_id,
             'configDigest': config_digest, 'rootFsLayers': layers, 'platform': 'linux/amd64',
+            'identityBinding': 'exact-config-digest' if checks['daemonIdIsConfigDigest'] else 'inspected-index-config-and-layers',
             'sourceRevision': revision, 'generator': {'name': 'syft', 'version': TOOLS['syft']['version']},
             'distro': {key: sbom.get('distro', {}).get(key) for key in ('id', 'name', 'versionID')},
             'packages': sorted(packages, key=lambda row: (row.get('type', ''), row.get('name', ''), row.get('version', '')))}
@@ -345,6 +352,7 @@ def main():
                 save(args.output / f'{name}.vulnerabilities.json', findings)
                 summary['images'][name] = {'imageId': image_id, 'packageCount': len(inventory['packages']),
                                           'configDigest': inventory['configDigest'], 'rootFsLayers': inventory['rootFsLayers'],
+                                          'identityBinding': inventory['identityBinding'],
                                           'catalogCoverage': coverage,
                                           'severityCounts': findings['severityCounts'], 'blockingFindings': findings['blockingFindings'],
                                           'sbomSha256': sha256(args.output / f'{name}.sbom.json'),

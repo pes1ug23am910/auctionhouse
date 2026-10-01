@@ -56,6 +56,12 @@ patterns or discard unfixed findings.
 Reports bind the commit, exact daemon image IDs, image-config digests and
 ordered root-filesystem layer digests, scanner binary/archive checksums,
 database metadata, component inventory and findings hashes. Each image has a
+recorded identity binding: a classic daemon's ID must equal the SHA256 of the
+exact config bytes, while an index ID requires its matching daemon descriptor,
+inspected configuration and ordered layers. Default fields added by a classic
+Docker inspect API cannot invalidate an otherwise exact config-digest match.
+All paths still verify the requested ID, platform and layer digests.
+Each image has a
 normalized inventory (`*.sbom.json`), a CycloneDX 1.6 component SBOM (`*.cdx.json`)
 and all matched findings (`*.vulnerabilities.json`). Built-in matcher exclusions
 (such as a distro's fixed/not-affected record) do not count as policy violations;
