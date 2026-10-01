@@ -63,22 +63,18 @@ class CacheProtocolTest {
         }
     }
 
-    @Test void memcachedPositiveFractionRoundsUpOnTheWire() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"memcached", "pagekv"})
+    void positiveFractionRoundsUpOnTheWire(String backend) throws Exception {
         try (var server = new Fixture(socket -> {
             assertEquals("set k 0 2 0", readLine(socket.getInputStream()));
             assertEquals("", readLine(socket.getInputStream()));
             socket.getOutputStream().write("STORED\r\n".getBytes(StandardCharsets.US_ASCII));
         })) {
-            new MemcachedCacheStore("127.0.0.1", server.port(), Duration.ofSeconds(2))
+            textStore(backend, server)
                     .set("k", new byte[0], CacheExpiry.after(Duration.ofMillis(1500)));
             server.await();
         }
-    }
-
-    @Test void pageKvRejectsUnverifiedExpiryBeforeOpeningAConnection() {
-        var cache = new PageKvCacheStore("127.0.0.1", 9, Duration.ofMillis(100));
-        assertThrows(UnsupportedOperationException.class,
-                () -> cache.set("key", new byte[0], CacheExpiry.after(Duration.ofSeconds(1))));
     }
 
     @Test void keysCannotInjectCommandsAndOversizedValuesAreRejectedLocally() {

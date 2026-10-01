@@ -6,11 +6,8 @@ import java.util.Optional;
 
 abstract class TextProtocolCacheStore implements CacheStore {
     private final SocketCacheTransport transport;
-    private final boolean relativeExpiry;
-
-    TextProtocolCacheStore(String host, int port, Duration timeout, int maxValueBytes, boolean relativeExpiry) {
+    TextProtocolCacheStore(String host, int port, Duration timeout, int maxValueBytes) {
         transport = new SocketCacheTransport(host, port, timeout, maxValueBytes);
-        this.relativeExpiry = relativeExpiry;
     }
 
     public Optional<byte[]> get(String rawKey) {
@@ -34,9 +31,6 @@ abstract class TextProtocolCacheStore implements CacheStore {
         String key = SocketCacheTransport.key(rawKey);
         byte[] value = transport.value(rawValue);
         Objects.requireNonNull(expiry, "expiry");
-        if (!relativeExpiry && expiry.seconds() != 0) {
-            throw new UnsupportedOperationException("This backend's currently declared protocol supports explicit no-expiry only");
-        }
         transport.execute((in, out) -> {
             SocketCacheTransport.ascii(out, "set " + key + " 0 " + expiry.seconds() + " " + value.length + "\r\n");
             out.write(value);

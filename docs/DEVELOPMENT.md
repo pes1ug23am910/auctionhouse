@@ -48,6 +48,7 @@ Profiles compose, for example `local,oidc,broker`. Start only the dependencies n
 | Check or experiment | Entry point and prerequisite |
 | --- | --- |
 | Domain/history, auth, stream and delivery tests | `test` / `integrationTest`; see [TESTING](TESTING.md) for selected classes |
+| Real PageKV/memcached cache comparison | `PAGEKV_EXECUTABLE=/absolute/path/to/pagekv-server bash ./gradlew pagekvIntegrationTest`; Linux Java 25, Docker and the built Linux server; see [CACHE](CACHE.md) |
 | Contention and independent history oracle | [experiments/contention](../experiments/contention/README.md) |
 | Two actual application instances | `experiments/http-instances.mjs`, with two configured local services |
 | Seven-query SQL catalogue | `python sql/run_catalogue.py --bids 1000000 --seed 20261001 --repetitions 3`; dedicated benchmark database |
@@ -87,6 +88,6 @@ Bid amounts and fixtures use exact integer minor units. Retry the original actor
 
 The container build bundles client assets, runs frontend/Java units, and produces a non-root read-only runtime with a separate migration command. Local release verification covers readiness, UI/CSRF behavior, deliberately failed-candidate rollback and database privilege boundaries. Migration compatibility must be reviewed before replacing an existing release; application rollback does not undo database changes.
 
-Cloud plans/applies, public publication and resource purchases are not part of a local build. Real AWS delivery/negative tests/teardown, actual PageKV, full-cloud dependency deployment and one-versus-two-host measurements remain separately required work. The dated local observation report verifies trace continuity and alert recovery and retains both failed offered-load targets. Its timings apply only to the recorded measurement artifact, which predates the dependency security updates.
+Cloud plans/applies, public publication and resource purchases are not part of a local build. Real AWS delivery/negative tests/teardown, full-cloud dependency deployment and one-versus-two-host measurements remain separately required work. The real Linux PageKV comparison has its own opt-in task above and is excluded from ordinary `integrationTest`. The dated local observation report verifies trace continuity and alert recovery and retains both failed offered-load targets. Its timings apply only to the recorded measurement artifact, which predates the dependency security updates.
 
 A measurement names the command, source revision/diff, environment, seed, configuration and raw output. An HTTP fixture is not a real broker/provider/cloud run. Accepted architecture changes create a new ADR; preserve prior records and document the superseding decision. See [TESTING](TESTING.md), [SPEC](SPEC.md) and [DEPLOYMENT](DEPLOYMENT.md).

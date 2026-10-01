@@ -24,9 +24,6 @@ public class CacheConfiguration {
 
     @Bean
     CacheExpiry cacheExpiry(CacheSettings settings) {
-        if (settings.backend().equalsIgnoreCase("pagekv") && !settings.noExpiry()) {
-            throw new IllegalArgumentException("PageKV requires explicit no-expiry until its server expiry capability is verified");
-        }
         return settings.noExpiry() ? CacheExpiry.noExpiry() : CacheExpiry.after(settings.ttl());
     }
 

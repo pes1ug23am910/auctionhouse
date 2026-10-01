@@ -83,6 +83,7 @@ tasks.register('integrationTest', Test) {
     group = 'verification'
     testClassesDirs = sourceSets.integrationTest.output.classesDirs
     classpath = sourceSets.integrationTest.runtimeClasspath
+    exclude '**/PageKvRealIntegrationTest*'
     systemProperty 'auctionhouse.integrationClasspath', sourceSets.integrationTest.runtimeClasspath.asPath
     systemProperty 'auctionhouse.brokerExperiment', providers.systemProperty('auctionhouse.brokerExperiment').getOrElse('false')
     systemProperty 'auctionhouse.brokerOutage', providers.systemProperty('auctionhouse.brokerOutage').getOrElse('false')
@@ -90,6 +91,15 @@ tasks.register('integrationTest', Test) {
     systemProperty 'auctionhouse.brokers', providers.systemProperty('auctionhouse.brokers').getOrElse('127.0.0.1:19092')
     systemProperty 'auctionhouse.experimentOutput', providers.systemProperty('auctionhouse.experimentOutput').getOrElse('build/experiments/broker')
     shouldRunAfter tasks.test
+}
+
+tasks.register('pagekvIntegrationTest', Test) {
+    description = 'Compares an actual Linux PageKV executable with memcached and PostgreSQL; requires Docker and PAGEKV_EXECUTABLE.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    include '**/PageKvRealIntegrationTest*'
+    outputs.upToDateWhen { false }
 }
 
 // Database tests run explicitly in CI; the ordinary build remains usable without Docker.

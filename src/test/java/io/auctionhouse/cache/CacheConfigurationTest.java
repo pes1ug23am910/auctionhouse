@@ -19,8 +19,12 @@ class CacheConfigurationTest {
         });
     }
 
-    @Test void pageKvExpiryCannotBeAssumedFromAProtocolName() {
-        context.withPropertyValues("auctionhouse.cache.backend=pagekv").run(c -> assertNotNull(c.getStartupFailure()));
+    @Test void pageKvUsesPositiveExpiryUnlessNoExpiryIsExplicit() {
+        context.withPropertyValues("auctionhouse.cache.backend=pagekv").run(c -> {
+            assertNull(c.getStartupFailure());
+            assertInstanceOf(PageKvCacheStore.class, c.getBean(CacheStore.class));
+            assertEquals(30, c.getBean(CacheExpiry.class).seconds());
+        });
         context.withPropertyValues("auctionhouse.cache.backend=pagekv", "auctionhouse.cache.no-expiry=true").run(c -> {
             assertNull(c.getStartupFailure());
             assertEquals(0, c.getBean(CacheExpiry.class).seconds());

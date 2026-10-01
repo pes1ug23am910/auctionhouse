@@ -7,7 +7,7 @@ public final class MemcachedCacheStore extends TextProtocolCacheStore {
         this(host, port, timeout, SocketCacheTransport.DEFAULT_MAX_VALUE_BYTES);
     }
     public MemcachedCacheStore(String host, int port, Duration timeout, int maxValueBytes) {
-        super(host, port, timeout, maxValueBytes, true);
+        super(host, port, timeout, maxValueBytes);
     }
     public String backendName() { return "memcached"; }
 }

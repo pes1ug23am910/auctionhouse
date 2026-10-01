@@ -56,6 +56,29 @@ Supported fixes applied:
   while the dated scanner database still reports no fixed version. The raw
   scanner result remains visible and blocking; the review does not override it.
 
+A follow-up on 1 October reviewed all 20 distinct advisories behind the
+retained blocking matches, including all 19 Debian records. Seven OpenSSL
+records now identify the already-installed `3.5.7-1~deb13u3` as fixed:
+`CVE-2026-35189`, `CVE-2026-35191`, `CVE-2026-42772`, `CVE-2026-54873`,
+`CVE-2026-72897`, `CVE-2026-84782` and `CVE-2026-84784`.
+[Debian's security update](https://security-tracker.debian.org/tracker/DSA-6531-1)
+is the package-level remediation; the earlier scanner database's matches
+remain unchanged in the recorded results. No additional stable-package fix
+was identified for the remaining Debian matches. The official Python image
+tag still returned HTTP 404 at 06:18 UTC.
+
+One additional applicability conflict requires resolution. Both supplemental
+images contain `zlib1g` version `1:1.3.dfsg+really1.3.1-1+b1`. The
+[CNA record for CVE-2026-85091](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/85xxx/CVE-2026-85091.json)
+identifies versions 1.3.1.2 through 1.3.2 as affected, with other versions
+unaffected by default. The corresponding
+[Debian source file](https://sources.debian.org/src/zlib/1%3A1.3.dfsg%2Breally1.3.1-1/gzwrite.c/)
+is byte-for-byte identical to upstream 1.3.1 and lacks the named `gz_vacate`
+function, while the Debian tracker still marks that package vulnerable.
+This is a version/source adjudication conflict, not a conclusion that the
+compiled image is universally safe. No exception has been added: both zlib
+matches remain blocking until the conflicting classification is resolved.
+
 Remaining prerequisites include:
 
 | Component | Evidence and required next step |
@@ -63,6 +86,7 @@ Remaining prerequisites include:
 | Python 3.13.15 | [PSF's advisory](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/82xxx/CVE-2026-82049.json) identifies versions before 3.13.16 as affected by a tar extraction filter flaw. [Python 3.13.16](https://www.python.org/downloads/release/python-31316/) fixes it, but the official `python:3.13.16-slim-trixie` tag was unavailable during this review. Adopt its verified digest when available, rerun warehouse tests and scan it. Application reachability has not been established; that does not make the installed vulnerable library a false positive. |
 | glibc on Trixie | [CVE-2026-19499](https://security-tracker.debian.org/tracker/CVE-2026-19499) remains marked vulnerable in the stable package. Debian classifies it as a minor issue without a stable security advisory; the configured High-severity scanner gate still blocks it. |
 | util-linux on Trixie | [CVE-2026-78408](https://security-tracker.debian.org/tracker/CVE-2026-78408) remains marked vulnerable in the stable package; the fix is in unstable. Do not mix unstable packages into the runtime merely to satisfy the scanner. |
+| ACL on Trixie | [CVE-2026-54369](https://security-tracker.debian.org/tracker/CVE-2026-54369) includes pathname-based functions in the installed `libacl1` library. It cannot be dismissed even if standalone ACL utilities are absent. Debian says the fix requires the newer ABI and is intended for a later point release. |
 | Other OS matches | Review every retained finding, including ACL, ncurses, Perl, zlib and OpenSSL records. A nonroot, read-only container or absence of a known application exploit does not automatically waive a package finding. |
 
 The telemetry agent's exact embedded JAR was checked against its official,
