@@ -210,6 +210,11 @@ class ProfilingContracts(unittest.TestCase):
         runs = [{"label": label, "executionCompleted": True, "instrumentationValid": True,
                  "oraclesPassed": True, "cleanupExitCode": 0, "allPerformanceGatesMet": False,
                  "measurement": performance(summary(dropped=10), 99)} for label in ("01-pool2", "02-pool16", "03-pool16", "04-pool2")]
+        for item, spec in zip(runs, run.experiment_plan()["variants"]):
+            item.update(spec, experiment="pool-abba", appSHA256="a" * 64)
+            for phase, rate, duration, suffix in (("warmup", 50, 15, "warmup"), ("measurement", 100, 45, "measured")):
+                settings = run.expected_configuration(rate, duration, item["label"] + "-" + suffix)
+                item.setdefault(phase, {})["configuration"] = {"verified": True, "expected": settings, "observed": settings}
         report = run.report_campaign(runs)
         self.assertTrue(report["executionAndOraclesPassed"])
         self.assertFalse(report["allMeasuredPerformanceGatesMet"])
@@ -236,7 +241,9 @@ class ProfilingContracts(unittest.TestCase):
                 calls.append(args[0])
                 arguments.append(args)
                 if args[0] == "docker":
-                    (output / "summary.json").write_text(json.dumps(summary(dropped=3)))
+                    document = summary(dropped=3)
+                    document.update(configuration=run.expected_configuration(100, 45, "fixture"), nominalScheduledTarget=4500)
+                    (output / "summary.json").write_text(json.dumps(document))
                     return subprocess.CompletedProcess(args, 99, "threshold failed", "")
                 (output / "reconciliation.json").write_text(json.dumps({"passed": True}))
                 return subprocess.CompletedProcess(args, 0, "oracle passed", "")

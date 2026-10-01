@@ -21,6 +21,9 @@ import threading
 import time
 import urllib.request
 
+from design import (EXPERIMENTS, allocation_progress, campaign_design_errors, configuration_check,
+                    expected_configuration, experiment_plan)
+
 from analyze import (EVENTS, acquisition_report, jfr_report, performance, resource_report,
                      selected_metrics, timestamp, write_gzip_json, write_json)
 
@@ -145,19 +148,20 @@ def sample_resources(stop, path, pid, env, container_ids):
             stop.wait(max(0, started + iteration - time.monotonic()))
 
 
-def run_load(output, rate, duration, label, env):
+def run_load(output, rate, duration, label, env, preallocated=40):
+    expected = expected_configuration(rate, duration, label, preallocated)
     output.mkdir()
     # k6 runs as its non-root image user and writes only to this disposable directory.
     output.chmod(0o777)
     write_json(output / "environment.json", {"StartedAt": now(), "Label": label,
         "Image": K6, "Rate": rate, "DurationSeconds": duration, "Seed": 42,
-        "PreallocatedVUs": 40, "MaxVUs": 80, "ContainerMemoryMiB": 256, "ContainerCPUs": 1,
+        "PreallocatedVUs": preallocated, "MaxVUs": 80, "ContainerMemoryMiB": 256, "ContainerCPUs": 1,
         "BaseURL": "http://127.0.0.1:8080", "ScriptSHA256": sha(ROOT / "experiments/load/k6-workload.js")})
     # Keep the stopped container until the resource sampler has joined; --rm races docker stats.
     args = ["docker", "run", "--name", env["COMPOSE_PROJECT_NAME"] + "-load", "--network", "host",
         "--memory=256m", "--cpus=1", "-e", "AUCTIONHOUSE_DEMO_PASSWORD", "-e", "AUTH_MODE=local-demo",
         "-e", "BASE_URL=http://127.0.0.1:8080", "-e", f"RATE={rate}", "-e", f"DURATION_SECONDS={duration}",
-        "-e", "PREALLOCATED_VUS=40", "-e", "MAX_VUS=80", "-e", "SEED=42", "-e", f"COMPARISON_LABEL={label}",
+        "-e", f"PREALLOCATED_VUS={preallocated}", "-e", "MAX_VUS=80", "-e", "SEED=42", "-e", f"COMPARISON_LABEL={label}",
         "-e", "SUMMARY_PATH=/evidence/summary.json", "-v", f"{ROOT / 'experiments/load'}:/scripts:ro",
         "-v", f"{output}:/evidence", K6, "run", "--no-usage-report", "--log-format=json", "/scripts/k6-workload.js"]
     result = command(args, env=env, timeout=duration + 180, check=False)
@@ -168,8 +172,12 @@ def run_load(output, rate, duration, label, env):
     (output / "reconcile.log").write_text(scrub(oracle.stdout + oracle.stderr, env), encoding="utf-8")
     summary = json.loads((output / "summary.json").read_text())
     reconcile = json.loads((output / "reconciliation.json").read_text()) if (output / "reconciliation.json").exists() else {"passed": False}
+    checked = configuration_check(summary, expected)
+    progress = allocation_progress(result.stdout + result.stderr, preallocated, 80, summary.get("dropped"))
+    write_json(output / "client-progress.json", progress)
     return {**performance(summary, result.returncode), "reconciliation": reconcile,
-            "executionCompleted": result.returncode in (0, 99), "oracleExitCode": oracle.returncode}
+            "configuration": checked, "allocationProgress": {key: value for key, value in progress.items() if key != "samples"},
+            "executionCompleted": result.returncode in (0, 99) and checked["verified"], "oracleExitCode": oracle.returncode}
 
 
 def export_jfr(recording, output):
@@ -209,8 +217,11 @@ def analyze_independently(tasks, result, env):
             result[name] = {"valid": False, "error": scrub(type(error).__name__ + ": " + str(error), env)}
 
 
-def variant(index, pool, output, private, jar, agent, base_env):
-    label = f"{index:02d}-pool{pool}"
+def variant(index, pool, output, private, jar, agent, base_env, preallocated=40, experiment="pool-abba"):
+    spec = experiment_plan(experiment)["variants"][index - 1]
+    if pool != spec["pool"] or preallocated != spec["preallocatedVUs"]:
+        raise ValueError("Variant does not match fixed experiment plan")
+    label = spec["label"]
     dest = output / label
     dest.mkdir()
     temp = private / label
@@ -222,7 +233,7 @@ def variant(index, pool, output, private, jar, agent, base_env):
                AUCTIONHOUSE_TELEMETRY_DIR=str(telemetry), AUCTIONHOUSE_DB_POOL_SIZE=str(pool),
                AUCTIONHOUSE_INSTANCE=label, OTEL_SERVICE_NAME="auctionhouse", OTEL_RESOURCE_ATTRIBUTES=f"service.instance.id={label}",
                OTEL_TRACES_SAMPLER="parentbased_traceidratio", OTEL_TRACES_SAMPLER_ARG="0.1")
-    result = {"label": label, "pool": pool, "appSHA256": sha(jar), "StartedAt": now(),
+    result = {**spec, "experiment": experiment, "appSHA256": sha(jar), "StartedAt": now(),
               "executionCompleted": False, "instrumentationValid": False, "oraclesPassed": False,
               "performanceTargetMet": False, "allPerformanceGatesMet": False}
     app = None
@@ -263,7 +274,7 @@ def variant(index, pool, output, private, jar, agent, base_env):
         (dest / "jfr-start.txt").write_text(jfr.stdout, encoding="utf-8")
         monitor = threading.Thread(target=sample_resources, args=(stop, dest / "resources.jsonl", app.pid, env, ids), daemon=True)
         monitor.start()
-        result["measurement"] = run_load(dest / "measured", 100, 45, label + "-measured", env)
+        result["measurement"] = run_load(dest / "measured", 100, 45, label + "-measured", env, preallocated)
         update_load_flags(result)
         stop.set()
         monitor.join(timeout=15)
@@ -336,28 +347,35 @@ def variant(index, pool, output, private, jar, agent, base_env):
     return result
 
 
-def report_campaign(runs):
-    execution = len(runs) == 4 and all(run["executionCompleted"] and run["instrumentationValid"] and run["oraclesPassed"] and run["cleanupExitCode"] == 0 and not run.get("cleanupErrors") for run in runs)
+def report_campaign(runs, experiment="pool-abba"):
+    plan = experiment_plan(experiment)
+    design_errors = campaign_design_errors(runs, plan)
+    execution = len(runs) == 4 and not design_errors and all(run["executionCompleted"] and run["instrumentationValid"] and run["oraclesPassed"] and run["cleanupExitCode"] == 0 and not run.get("cleanupErrors") for run in runs)
     pairs = []
     for left, right in ((0, 1), (3, 2)):
-        if len(runs) > max(left, right) and all("measurement" in runs[i] for i in (left, right)):
+        if not design_errors and len(runs) > max(left, right) and all("measurement" in runs[i] for i in (left, right)):
             a, b = runs[left]["measurement"], runs[right]["measurement"]
-            pairs.append({"pool2Run": runs[left]["label"], "pool16Run": runs[right]["label"],
-                "pool16MinusPool2P95Ms": b["latencyMilliseconds"]["p95"] - a["latencyMilliseconds"]["p95"],
-                "pool16MinusPool2Dropped": b["dropped"] - a["dropped"],
-                "pool16MinusPool2ValidOfferedFraction": b["validOfferedFraction"] - a["validOfferedFraction"]})
+            pairs.append({"axis": plan["axis"], "controlValue": plan["control"], "interventionValue": plan["intervention"],
+                "controlRun": runs[left]["label"], "interventionRun": runs[right]["label"],
+                "interventionMinusControlP95Ms": b["latencyMilliseconds"]["p95"] - a["latencyMilliseconds"]["p95"],
+                "interventionMinusControlDropped": b["dropped"] - a["dropped"],
+                "interventionMinusControlValidOfferedFraction": b["validOfferedFraction"] - a["validOfferedFraction"]})
     attainment = len(runs) == 4 and all(run["allPerformanceGatesMet"] for run in runs)
-    return {"executionAndOraclesPassed": execution,
+    return {"formatVersion": 2, "experiment": plan,
+            "experimentDesignValid": len(runs) == 4 and not design_errors, "experimentDesignErrors": design_errors,
+            "executionAndOraclesPassed": execution,
             "allMeasuredPerformanceGatesMet": attainment, "validAcceptance": execution and attainment,
             "orderedRuns": runs, "pairedDifferences": pairs,
-            "interpretation": "Two runs per pool on one hosted VM are a bounded contention investigation, not production capacity, a stable SLO, or cloud scaling. Correlation of waits/stacks/resources does not establish cause. The same bidder session and hot auction create intentional shared-session/row contention. No application default is changed."}
+            "interpretation": "Two runs per level on one hosted VM are a bounded " + plan["axis"] + " investigation, not production capacity, a stable SLO, or cloud scaling. Only within-campaign comparisons are controlled. Correlation of waits/stacks/resources does not establish cause. The same bidder session and hot auction create intentional shared-session/row contention. Preallocating more VUs changes burst absorption, not the offered rate or maximum concurrency. No application or default workload setting is changed."}
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--agent", type=pathlib.Path, required=True)
+    parser.add_argument("--experiment", choices=EXPERIMENTS, default="pool-abba")
     args = parser.parse_args()
+    plan = experiment_plan(args.experiment)
     if platform.system() != "Linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise SystemExit("Use this destructive disposable-stack harness only on a dedicated GitHub Linux runner")
     temp_root = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve()
@@ -372,7 +390,7 @@ def main():
     env["GRAFANA_ADMIN_PASSWORD"] = secrets.token_urlsafe(32)
     output.mkdir()
     jar = ROOT / "build/libs/auctionhouse.jar"
-    source_paths = ["experiments/profile/run.py", "experiments/profile/analyze.py", "experiments/profile/diagnostic.jfc", "experiments/profile/ProfileEvents.java",
+    source_paths = ["experiments/profile/run.py", "experiments/profile/analyze.py", "experiments/profile/design.py", "experiments/profile/diagnostic.jfc", "experiments/profile/ProfileEvents.java",
                     "experiments/load/k6-workload.js", "experiments/load/reconcile.mjs", "observability/agent.properties",
                     "compose.yaml", "compose.broker.yaml", "compose.cache.yaml", "compose.observability.yaml", "observability/collector.yaml"]
     write_json(output / "campaign-environment.json", {"sourceSHA": os.environ["GITHUB_SHA"], "runId": os.environ["GITHUB_RUN_ID"],
@@ -382,20 +400,20 @@ def main():
         "memoryKiB": key_numbers("/proc/meminfo", {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"}),
         "clockTicksPerSecond": os.sysconf("SC_CLK_TCK"), "javaVersion": command(["java", "-version"]).stderr,
         "appHeapMiB": 384, "appActiveProcessorCount": 2, "appAffinity": sorted(os.sched_getaffinity(0))[:2],
-        "poolOrder": [2, 16, 16, 2], "freshDependenciesPerRun": True, "traceSampling": .1,
+        "experiment": plan, "poolOrder": [spec["pool"] for spec in plan["variants"]], "freshDependenciesPerRun": True, "traceSampling": .1,
         "samplerNominalPeriodSeconds": 1, "containerStatsEverySamples": 5,
         "acquisitionHistogramSloDurations": ACQUISITION_SLO.split(","),
         "load": {"warmupRate": 50, "warmupSeconds": 15, "rate": 100, "seconds": 45, "seed": 42,
-                 "preallocatedVUs": 40, "maxVUs": 80, "k6CPUs": 1, "k6MemoryMiB": 256}})
+                 "warmupPreallocatedVUs": 40, "measuredPreallocatedVUsOrder": [spec["preallocatedVUs"] for spec in plan["variants"]], "maxVUs": 80, "k6CPUs": 1, "k6MemoryMiB": 256}})
     command(["docker", "pull", K6], timeout=180)
     runs = []
     with tempfile.TemporaryDirectory(prefix="profile-private-", dir=temp_root) as private:
-        for index, pool in enumerate((2, 16, 16, 2), 1):
-            print(f"Starting bounded run {index}/4, pool={pool}", flush=True)
-            runs.append(variant(index, pool, output, pathlib.Path(private), jar, args.agent.resolve(), env))
+        for index, spec in enumerate(plan["variants"], 1):
+            print(f"Starting bounded run {index}/4: {spec}", flush=True)
+            runs.append(variant(index, spec["pool"], output, pathlib.Path(private), jar, args.agent.resolve(), env, spec["preallocatedVUs"], args.experiment))
             print(json.dumps({key: runs[-1][key] for key in ("label", "executionCompleted", "instrumentationValid", "oraclesPassed", "performanceTargetMet", "allPerformanceGatesMet")}), flush=True)
-            write_json(output / "campaign.json", report_campaign(runs))
-    report = report_campaign(runs)
+            write_json(output / "campaign.json", report_campaign(runs, args.experiment))
+    report = report_campaign(runs, args.experiment)
     write_json(output / "campaign.json", report)
     # Text/JSON artifacts only plus explicitly selected JSON gzip; no raw JFR/telemetry or secrets.
     artifact_bytes = 0
@@ -417,7 +435,7 @@ def main():
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as summary:
-            summary.write("## Bounded ABBA profiling\n\nExecution, instrumentation and durable oracles: **" + ("PASS" if report["executionAndOraclesPassed"] else "FAIL") + "**.\n\n")
+            summary.write("## Bounded " + args.experiment + " profiling\n\nExecution, instrumentation and durable oracles: **" + ("PASS" if report["executionAndOraclesPassed"] else "FAIL") + "**.\n\n")
             summary.write("All measured load/latency gates attained: **" + ("YES" if report["allMeasuredPerformanceGatesMet"] else "NO") + "**. A separate final performance-acceptance step fails the workflow when these gates are missed.\n\n")
             summary.write("| Run | k6 exit | Offered | Completed | Dropped | p95 ms | Target met |\n|---|---:|---:|---:|---:|---:|---|\n")
             for run in runs:

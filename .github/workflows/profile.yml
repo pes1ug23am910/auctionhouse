@@ -1,6 +1,15 @@
 name: Bounded contention profiling (manual)
 on:
   workflow_dispatch:
+    inputs:
+      experiment:
+        description: Fixed comparison axis (all rate, duration, maximum-VU and correctness gates remain unchanged)
+        type: choice
+        default: pool-abba
+        required: true
+        options:
+          - pool-abba
+          - preallocation-abba
 permissions:
   contents: read
 concurrency:
@@ -71,7 +80,9 @@ jobs:
           java -cp "$fixture_dir/*" "$fixture_dir/FixtureCredential.java"
       - name: Run all four diagnostics and retain threshold failures
         id: campaign
-        run: python experiments/profile/run.py --output "$RUNNER_TEMP/profile-report" --agent "$RUNNER_TEMP/opentelemetry-javaagent.jar"
+        env:
+          PROFILE_EXPERIMENT: ${{ inputs.experiment }}
+        run: python experiments/profile/run.py --output "$RUNNER_TEMP/profile-report" --agent "$RUNNER_TEMP/opentelemetry-javaagent.jar" --experiment "$PROFILE_EXPERIMENT"
       - name: Upload only privacy-checked diagnostic artifacts
         if: ${{ always() && steps.campaign.outputs.upload_safe == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

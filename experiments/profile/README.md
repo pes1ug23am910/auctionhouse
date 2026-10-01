@@ -1,17 +1,27 @@
 # Isolated contention diagnostics
 
-The manual [profiling workflow](../../.github/workflows/profile.yml) builds one application JAR and investigates the same seed-42 workload with connection pools **2, 16, 16, 2** on a fresh Ubuntu runner. It uses no AWS credentials or deployment. The source revision, JAR, agent, scripts, configuration, image identities, actual CPU model/count, available memory and kernel are recorded. Results belong to those artifacts and that runner.
+The manual [profiling workflow](../../.github/workflows/profile.yml) builds one application JAR and defaults to investigating the same seed-42 workload with connection pools **2, 16, 16, 2** (`pool-abba`) on a fresh Ubuntu runner. It uses no AWS credentials or deployment. The source revision, JAR, agent, scripts, configuration, image identities, actual CPU model/count, available memory and kernel are recorded. Results belong to those artifacts and that runner.
 
-Each variant creates fresh PostgreSQL, Redpanda, memcached, Collector, Tempo and Prometheus containers/volumes, then a fresh JVM. Only the pool size changes within the campaign. The JVM has a fixed 384 MiB initial/maximum heap, `ActiveProcessorCount=2`, affinity to the same two available CPUs, and 10% parent-based tracing. Compose dependency limits remain fixed. k6 has one CPU, 256 MiB and 40/80 initial/maximum virtual users. A 50/s fifteen-second warm-up and a 100/s forty-five-second measurement each create their own auction. The same authenticated bidder session is shared across load users, intentionally including JDBC-session row contention alongside the hot auction. These are bounded diagnostic workloads, not sustained production capacity measurements.
+Each variant creates fresh PostgreSQL, Redpanda, memcached, Collector, Tempo and Prometheus containers/volumes, then a fresh JVM. In the default campaign only the pool size changes. The opt-in preallocation experiment below holds the pool fixed. The JVM has a fixed 384 MiB initial/maximum heap, `ActiveProcessorCount=2`, affinity to the same two available CPUs, and 10% parent-based tracing. Compose dependency limits remain fixed. k6 has one CPU, 256 MiB and, by default, 40/80 initial/maximum virtual users. A 50/s fifteen-second warm-up and a 100/s forty-five-second measurement each create their own auction. The same authenticated bidder session is shared across load users, intentionally including JDBC-session row contention alongside the hot auction. These are bounded diagnostic workloads, not sustained production capacity measurements.
 
 The campaign retains all four runs even if k6 returns threshold exit **99**. It records actual offered/started/completed/dropped operations, client recovery, errors and logical p50/p95/p99; setup HTTP calls do not become logical operations. Every warm-up and measurement invokes the durable database reconciliation for accepted/rejected intents, monotonic bid/version history, final auction state, outbox publication and unique sink effects.
 
 There are two separate results:
 
-- `executionAndOraclesPassed` requires all four executions, valid instrumentation, durable reconciliations and fixture cleanup. This controls the diagnostic execution step.
+- `executionAndOraclesPassed` requires all four executions, the declared experiment order/settings and identical JAR hash, valid instrumentation, durable reconciliations and fixture cleanup. The actual summary configuration must match the requested rate, duration, seed, preallocated/maximum VUs, authentication mode, label and workload description in both phases. This controls the diagnostic execution step.
 - `performanceTargetMet` requires at least 99% of actual offered work to complete with a valid outcome and p95 below 250 ms. `allPerformanceGatesMet` also requires k6's stricter zero-drop/error thresholds. These booleans and actual k6 exit codes remain true or false according to workload results even if a diagnostic fails. A separate final **Performance acceptance** step prints numeric attainment and diagnostic completeness separately; `validAcceptance` requires both. It fails the workflow if any measured run misses the gates or supporting diagnostics are incomplete, after retaining artifacts.
 
-Pairs compare the first two runs and the final two in reverse order. Two samples per pool can reveal order sensitivity; they cannot establish a stable distribution or attribute every difference to the pool. The default connection pool is unchanged.
+Pairs compare the first two runs and the final two in reverse order. Reports identify the actual experiment axis and compute intervention-minus-control differences. Two samples per level can reveal order sensitivity; they cannot establish a stable distribution or attribute every difference to that setting. The default connection pool is unchanged.
+
+## Optional preallocation experiment
+
+Select `experiment=preallocation-abba` to use pool **16 for all four runs**, measured preallocated VUs **40, 80, 80, 40**, and maximum VUs **80 throughout**. Each separate warm-up invocation remains **40/80 VUs at 50/s for 15 seconds**. Measurement remains **100/s for 45 seconds**, seed 42, the same shared bidder session and hot auction, the same resource limits, strict zero-drop/error gates and durable oracles. The script chooses operations by iteration index, so changing the VU count does not change the deterministic operation mix. No default application or workload setting changes.
+
+The retained pool campaign's terminal progress reached 53/78/40/50 allocated VUs from 40 initially, with 13/38/0/10 drops respectively. The [pinned k6 scheduler](https://github.com/grafana/k6/blob/v2.3.0/lib/executor/constant_arrival_rate.go#L301-L334) records a drop when no VU can start an iteration, then requests background allocation if capacity remains. This motivates testing preallocation; it does not prove why VUs were unavailable or that dynamic allocation CPU cost alone caused the misses. More initially available VUs can absorb a burst without increasing the existing ceiling. The original failures remain valid.
+
+`client-progress.json` preserves numeric terminal snapshots separately from strict summary counts: active/allocated VUs, completions and both global and scenario elapsed time. Global time includes setup; the rounded scenario clock distinguishes its window. Snapshots are sparse, can miss peaks, and do not locate exact drop times. Missing progress is reported as unavailable rather than zero; it does not replace the workload oracles. Invocation start/finish timestamps also include setup and drain, so the extra initialization is visible rather than charged to the 45-second logical workload.
+
+This optional campaign is implemented and contract-tested; its workload result is pending an actual run. Interpret only its within-campaign pairs using the recorded JAR, source and runner. Earlier campaign timing does not become a controlled baseline for a newer artifact. A failed gate still fails the workflow after artifacts are retained; this option is not an automatic retry or target-tuning loop.
 
 ## Diagnostic evidence
 
@@ -28,7 +38,7 @@ Run the lightweight analysis/failure-path contracts independently:
 python -m unittest discover -s experiments/profile -p 'test_*.py' -v
 ```
 
-Use **Actions > Bounded contention profiling (manual) > Run workflow** for actual collection. There are no deployment inputs. Hosted timing and instrumentation validation are established only by the resulting run artifacts, not by the helper tests or workflow definition.
+Use **Actions > Bounded contention profiling (manual) > Run workflow** and choose `pool-abba` (default) or `preallocation-abba` for actual collection. There are no deployment inputs. Hosted timing and instrumentation validation are established only by the resulting run artifacts, not by the helper tests or workflow definition.
 
 ## Recorded result
 
