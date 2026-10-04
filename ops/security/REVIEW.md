@@ -1,10 +1,11 @@
 # Image review: 5 October 2026
 
 **Release image publication remains blocked by the vulnerability policy.**
-The `bd78f33` verification completed functional checks and all image scans on
-1 October and reported 112 High package/advisory matches, including two in
-the telemetry agent. Those counts apply to those images. The supported patch
-updates below have not yet had a complete rebuilt-image scan.
+The `0330694` verification completed functional checks and all image scans on
+5 October (IST), reporting 115 High package/advisory matches across 14 advisory
+IDs. The application and official telemetry agent have no blocking matches;
+the gateway and warehouse retain OS-package findings. The older 112-match
+result below belongs to the 1 October images and vulnerability database.
 The earlier thin verification pass is historical. There are no project suppressions or
 accepted-risk exceptions. These are build and scan results, not a deployment
 or an AWS scan.
@@ -31,11 +32,52 @@ The warehouse base and CI runtime pins use that maintenance release, which
 [Python documents](https://www.python.org/downloads/release/python-31316/)
 as containing security fixes.
 
-The local Docker daemon was unavailable during this update. Agent binding and
-command-contract checks do not substitute for updated warehouse execution or
-complete application/gateway/warehouse image builds and scans. Remaining OS
-findings still need review against the actual rebuilt images and fresh database.
-No severity rule, ignore list, exception or release acceptance changed.
+The local Docker daemon was unavailable during the update; subsequent hosted
+verification built and exercised the actual images. Ordinary
+[CI 37233442581](https://github.com/pes1ug23am910/auctionhouse/actions/runs/37233442581)
+at `0330694` passed all five jobs (237 passes, three opt-in skips), including
+19 warehouse tests on Python 3.13.16. The skips are separate contention and
+broker-failure experiments. No severity rule, ignore list, exception or release
+acceptance changed.
+
+## Completed rebuilt-image scan at `0330694`
+
+The [5 October verification](https://github.com/pes1ug23am910/auctionhouse/actions/runs/37233444108)
+at [0330694](https://github.com/pes1ug23am910/auctionhouse/commit/0330694092903675028a4bd242b72226ffc65029)
+passed topology/contracts, backend/PostgreSQL checks, all three image builds,
+application rollback, actual gateway/warehouse container checks and cleanup.
+All exact config-digest, ordered-layer, Linux AMD64 and package-coverage checks
+passed. Scanning completed without a helper error and rejected the release;
+image export and deployment were skipped.
+
+| Inventory | Packages/components | High / blocking matches |
+| --- | ---: | ---: |
+| Application, discovered packages | 203 | 0 |
+| Official agent supplement | 93 | 0 |
+| Gateway | 82 | 54 |
+| Warehouse | 200 | 61 |
+
+There were no Critical or Unknown matches. The agent inventory confirms
+Jackson 2.22.3, and the warehouse inventory confirms Python 3.13.16; both
+previous Jackson GHSAs and Python CVE-2026-82049 are absent from current
+findings. The newer database adds GCC CVE-2026-95619 for three packages in each
+supplementary image: 112 previous matches minus three remediated matches plus
+six new matches equals 115. This is not a controlled same-database comparison.
+Remaining matches concern Perl, zlib, ncurses, glibc, util-linux, ACL and GCC.
+No package applicability exception or accepted risk has been introduced.
+
+Exact image IDs:
+
+- Application: `sha256:d62ab33c1135dd95a4393d2ea01431d04f48c9a692eeef73159ce5381b22af2c`.
+- Gateway: `sha256:16d6d0fd49fa2b96b3220268192e884030d14621a8ba796577a5f4ddf519f3ab`.
+- Warehouse: `sha256:03c1f9407e020c89e4d169fab2357b2e9e5a543360d237975e439f685c677aaa`.
+
+The validated Grype database is v6.1.10, built `2026-10-04T08:11:47Z`;
+Syft 1.52.0 and Grype 0.119.0 remain unchanged. The artifact API digest,
+40 retained download entries and 35 extracted archive members were verified.
+This does not cover support-service images, EC2 AMIs, ECR findings or live AWS
+network/IAM/recovery behavior. New-agent actual trace/export acceptance also
+remains separate from the synthetic histogram probe.
 
 ## Completed rebuilt-image scan at `bd78f33`
 

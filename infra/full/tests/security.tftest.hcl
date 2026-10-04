@@ -37,6 +37,23 @@ variables {
 run "one_application_plus_one_supporting_host" {
   command = apply
   assert {
+    condition     = !one(aws_budgets_budget.account_guard.cost_types).include_credit && !one(aws_budgets_budget.account_guard.cost_types).include_refund
+    error_message = "Credits and refunds must not offset spend counted by the account budget alert."
+  }
+  assert {
+    condition = (
+      aws_budgets_budget.account_guard.budget_type == "COST" &&
+      aws_budgets_budget.account_guard.time_unit == "MONTHLY" &&
+      aws_budgets_budget.account_guard.limit_unit == "USD" &&
+      tonumber(aws_budgets_budget.account_guard.limit_amount) == 10 &&
+      toset([for notification in aws_budgets_budget.account_guard.notification : "${notification.notification_type}:${notification.threshold}"]) == toset(["ACTUAL:50", "ACTUAL:100"]) &&
+      alltrue([for notification in aws_budgets_budget.account_guard.notification :
+        notification.threshold_type == "PERCENTAGE" && notification.comparison_operator == "GREATER_THAN" && notification.subscriber_email_addresses == toset(["fixture@example.invalid"])
+      ])
+    )
+    error_message = "Excluding credits/refunds must preserve the approved monthly USD limit and existing actual-cost email alerts."
+  }
+  assert {
     condition     = aws_instance.dependency.instance_type == "t3.large" && one(aws_instance.dependency.credit_specification).cpu_credits == "standard" && alltrue([for host in aws_instance.app : one(host.credit_specification).cpu_credits == "standard"])
     error_message = "The existing T3 default and standard CPU credit mode must be preserved."
   }

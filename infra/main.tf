@@ -198,6 +198,11 @@ resource "aws_budgets_budget" "account_guard" {
   limit_amount = tostring(var.approved_monthly_budget_usd)
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
+  # Track costs before credits/refunds so promotional credits cannot hide spend.
+  cost_types {
+    include_credit = false
+    include_refund = false
+  }
   # Account-wide deliberately also catches untagged shared/support/IPv4 charges.
   notification {
     comparison_operator        = "GREATER_THAN"

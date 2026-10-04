@@ -47,7 +47,10 @@ Use a distinct encrypted backend key ending in `/full/terraform.tfstate`,
 record it in `state_backend_key`, and initialize using the private backend
 configuration. The backend itself, GitHub identity provider and certificate
 are externally owned and excluded from teardown. Do not reuse thin state.
-All resource/expiry/cost inputs remain mandatory. Budget alerts are not caps.
+All resource/expiry/cost inputs remain mandatory. The account budget counts costs
+before credits and refunds, so promotional credits cannot hide spending. Other
+cost-type defaults remain unchanged, including discounts, taxes and support
+charges. Budget alerts are not caps or a remaining-credit balance.
 
 See [the deployment guide](../../docs/DEPLOYMENT.md) and
 `ops/cloud/full/README.md` for bootstrap, immutable release, measurement and

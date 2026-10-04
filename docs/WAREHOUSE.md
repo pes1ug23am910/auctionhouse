@@ -3,9 +3,13 @@
 The warehouse is a local, single-writer DuckDB application under [warehouse/](../warehouse/README.md). It loads committed event envelopes exported from the notification sink and transforms them with dbt. Python 3.13.15, DuckDB 1.5.6, dbt-duckdb 1.11.0, dbt-core 1.12.5 and pytest 9.1.1 were used for the recorded validation; install the complete dependency lock rather than resolving new transitive versions.
 
 The container and CI now pin Python 3.13.16. Its official image index and Linux
-AMD64 manifest/config digests were checked on 5 October. The existing results
-above remain attached to Python 3.13.15; the updated container still requires
-the warehouse tests, container checks and full image security scan.
+AMD64 manifest/config digests were checked on 5 October. At source `0330694`,
+[CI](https://github.com/pes1ug23am910/auctionhouse/actions/runs/37233442581)
+passed all 19 warehouse tests on that runtime, and
+[full verification](https://github.com/pes1ug23am910/auctionhouse/actions/runs/37233444108)
+passed the actual container checks. Its security scan still rejects the image
+for OS-package findings; see [the exact image review](../ops/security/REVIEW.md).
+The earlier real event-cut measurements below retain Python 3.13.15.
 
 ## Grain and identity
 
