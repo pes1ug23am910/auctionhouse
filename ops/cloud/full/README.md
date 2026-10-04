@@ -14,8 +14,9 @@ acceptance checks.
 
 One or two `t3.small` application hosts each run Java (512MiB heap, 1GiB
 container, one CPU) and the experimental gateway (256MiB, half CPU). The default
-ALB event route goes directly to Java. A separate `t3.large` supporting host
-runs replication-one Redpanda, memcached, collector, Tempo, Prometheus and
+ALB event route goes directly to Java. A separate supporting host (default
+`t3.large`, or explicit `m7i-flex.large` where eligible and available) runs
+replication-one Redpanda, memcached, collector, Tempo, Prometheus and
 Grafana; warehouse is a bounded on-demand job. A shared single-AZ RDS instance
 stores JDBC sessions, authorization, bids, replay identities, outbox and sink.
 ALB stickiness is disabled. Two application hosts therefore means **three EC2

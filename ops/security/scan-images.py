@@ -26,9 +26,9 @@ TOOLS = {
              'linux': 'caeedb81fb0491615f1ebd1761e4145d41ee86dd2cc7bf80669f9f5ad9d6133d'},
 }
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
-AGENT_VERSION = '2.31.1'
-AGENT_JAR_SHA256 = 'bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba'
-AGENT_SBOM_SHA256 = '432b9ad8dd2a420c3770d2d2dc9b5e10bbcfae2200bef4a18a9793ffe0b0bf67'
+AGENT_VERSION = '2.32.0'
+AGENT_JAR_SHA256 = 'f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82'
+AGENT_SBOM_SHA256 = '162d909edaa5e0e45dfad27ae6e6ddb1c9709fccdcbe6dbb7ebdab4e23183c76'
 
 
 class ScanFailure(RuntimeError):

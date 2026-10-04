@@ -2,6 +2,11 @@
 
 The warehouse is a local, single-writer DuckDB application under [warehouse/](../warehouse/README.md). It loads committed event envelopes exported from the notification sink and transforms them with dbt. Python 3.13.15, DuckDB 1.5.6, dbt-duckdb 1.11.0, dbt-core 1.12.5 and pytest 9.1.1 were used for the recorded validation; install the complete dependency lock rather than resolving new transitive versions.
 
+The container and CI now pin Python 3.13.16. Its official image index and Linux
+AMD64 manifest/config digests were checked on 5 October. The existing results
+above remain attached to Python 3.13.15; the updated container still requires
+the warehouse tests, container checks and full image security scan.
+
 ## Grain and identity
 
 One row in `raw.events` and `analytics.fct_auction_events` means one immutable source `eventId`. It does not mean one delivery, auction, bidder, or sale. A second unique constraint protects `(auction_id, aggregate_version)`. A transaction writes the event effect and its load-attempt record together. A failed attempt-record write rolls back the event effect.

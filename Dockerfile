@@ -28,7 +28,7 @@ COPY --from=build --chown=10001:10001 /unpacked/BOOT-INF/classes/ classes/
 COPY --from=build --chown=10001:10001 /unpacked/BOOT-INF/lib/ lib/
 COPY --chmod=0555 ops/container-entrypoint.sh /app/entrypoint.sh
 COPY --chown=10001:10001 observability/agent.properties /app/observability/agent.properties
-ADD --checksum=sha256:bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba --chmod=0444 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.31.1/opentelemetry-javaagent.jar /opt/otel/opentelemetry-javaagent.jar
+ADD --checksum=sha256:f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82 --chmod=0444 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.32.0/opentelemetry-javaagent.jar /opt/otel/opentelemetry-javaagent.jar
 RUN chmod 0555 /opt/otel
 USER 10001:10001
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC" \

@@ -30,7 +30,7 @@ from analyze import (EVENTS, acquisition_report, jfr_report, performance, resour
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 K6 = "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34"
 ACQUISITION_SLO = "1us,5us,10us,25us,50us,100us,250us,500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s,2s,5s"
-AGENT_SHA = "bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba"
+AGENT_SHA = "f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82"
 COMPOSE = ["docker", "compose", "-f", "compose.yaml", "-f", "compose.broker.yaml",
            "-f", "compose.cache.yaml", "-f", "compose.observability.yaml"]
 SERVICES = ["postgres", "redpanda", "memcached", "collector", "tempo", "prometheus"]

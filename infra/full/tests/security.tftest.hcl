@@ -37,6 +37,10 @@ variables {
 run "one_application_plus_one_supporting_host" {
   command = apply
   assert {
+    condition     = aws_instance.dependency.instance_type == "t3.large" && one(aws_instance.dependency.credit_specification).cpu_credits == "standard" && alltrue([for host in aws_instance.app : one(host.credit_specification).cpu_credits == "standard"])
+    error_message = "The existing T3 default and standard CPU credit mode must be preserved."
+  }
+  assert {
     condition     = length(aws_instance.app) == 1 && output.comparison_manifest.totalEc2HostCount == 2 && output.comparison_manifest.supportingEc2HostCount == 1
     error_message = "One application host must report its additional dependency host, not imply one total host."
   }
@@ -88,6 +92,26 @@ run "two_application_hosts_share_dependencies" {
     condition     = output.comparison_manifest.dependencyInstanceId == run.one_application_plus_one_supporting_host.comparison_manifest.dependencyInstanceId && output.comparison_manifest.database.arn == run.one_application_plus_one_supporting_host.comparison_manifest.database.arn && output.comparison_manifest.runtimeConfigurationSha256 == run.one_application_plus_one_supporting_host.comparison_manifest.runtimeConfigurationSha256
     error_message = "Host-count comparison must preserve the same shared dependency/DB and per-host settings."
   }
+}
+run "free_plan_supporting_host_preserves_full_topology" {
+  command = apply
+  variables {
+    application_host_count   = 2
+    dependency_instance_type = "m7i-flex.large"
+  }
+  assert {
+    condition     = aws_instance.dependency.instance_type == "m7i-flex.large" && length(aws_instance.dependency.credit_specification) == 0 && alltrue([for host in aws_instance.app : one(host.credit_specification).cpu_credits == "standard"])
+    error_message = "M7i-flex must omit T-family CPU credits without changing app-host credit settings."
+  }
+  assert {
+    condition     = length(aws_instance.app) == 2 && output.comparison_manifest.totalEc2HostCount == 3 && output.comparison_manifest.dependencyInstanceType == "m7i-flex.large" && output.comparison_manifest.runtimeConfigurationSha256 == run.one_application_plus_one_supporting_host.comparison_manifest.runtimeConfigurationSha256
+    error_message = "The Free-plan support option must preserve the full topology and per-app runtime settings and report the chosen type."
+  }
+}
+run "reject_undersized_supporting_host" {
+  command = plan
+  variables { dependency_instance_type = "t3.small" }
+  expect_failures = [var.dependency_instance_type]
 }
 run "reject_unapproved_spend" {
   command = plan

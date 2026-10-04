@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$Instance,
-    [string]$AgentJar=(Join-Path $PSScriptRoot '../build/telemetry/opentelemetry-javaagent-2.31.1.jar'),
+    [string]$AgentJar=(Join-Path $PSScriptRoot '../build/telemetry/opentelemetry-javaagent-2.32.0.jar'),
     [int]$Port=8080,[int]$PoolSize=16,[string]$Profiles='local,broker',
     [string]$Sampler='parentbased_always_on',[string]$SamplerArgument='1.0'
 )
@@ -12,7 +12,7 @@ $repository=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $jar=(Resolve-Path (Join-Path $repository 'build/libs/auctionhouse.jar')).Path
 $agent=(Resolve-Path -LiteralPath $AgentJar).Path
 $config=(Resolve-Path (Join-Path $PSScriptRoot 'agent.properties')).Path
-if((Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba') {throw 'Agent checksum mismatch'}
+if((Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82') {throw 'Agent checksum mismatch'}
 $destination=[System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 if(Test-Path -LiteralPath (Join-Path $destination 'process.json')) {throw 'Choose a fresh output directory'}
@@ -31,7 +31,7 @@ try {
         ProcessId=$process.Id;StartedAt=$process.StartTime.ToUniversalTime().ToString('o');
         Instance=$Instance;Port=$Port;PoolSize=$PoolSize;Profiles=$Profiles;Jar=$jar;
         JarSHA256=(Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant();
-        AgentVersion='2.31.1';AgentSHA256=(Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant();
+        AgentVersion='2.32.0';AgentSHA256=(Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant();
         Sampler=$Sampler;SamplerArgument=$SamplerArgument;MaxHeapMiB=384
     }
     $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destination 'process.json')

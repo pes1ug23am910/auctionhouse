@@ -7,6 +7,23 @@ EC2 instances; two application hosts means three. ALB and RDS are additional
 managed services. Changing application count within this state preserves the
 shared database, dependency host and persistent dependency volume.
 
+The supporting host accepts `t3.large` (the existing default) or an explicitly
+selected `m7i-flex.large`; both provide 2 vCPUs and 8 GiB on x86. Free-plan
+accounts can select `m7i-flex.large` when their account and Region permit it.
+Verify the selected type's eligibility, availability and price before applying;
+the configuration does not select a type or upgrade an account automatically.
+T3 hosts use standard CPU credits, while M7i-flex has no CPU credit setting.
+Their CPU performance characteristics differ, so keep the same supporting
+instance throughout a one-versus-two-application comparison and record its type.
+The existing application and container resource budgets remain unchanged.
+
+With the default 2-vCPU application hosts, the one-application topology requires
+4 EC2 vCPUs and the two-application topology requires 6. Confirm the regional
+On-Demand Standard quota has room for these hosts plus any unrelated running
+instances. Quota approval and an eligible type do not guarantee launch capacity.
+See [EC2 Free Tier eligibility](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html)
+and [instance specifications](https://docs.aws.amazon.com/ec2/latest/instancetypes/gp.html).
+
 This module is local implementation until a separately authorized AWS run
 establishes delivery, negative checks, recovery and teardown. It never creates
 an OIDC provider, DNS registration or ACM certificate. Supply a validated

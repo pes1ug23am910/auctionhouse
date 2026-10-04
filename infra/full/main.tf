@@ -422,8 +422,11 @@ resource "aws_instance" "dependency" {
     delete_on_termination = true
   }
 
-  credit_specification {
-    cpu_credits = "standard"
+  dynamic "credit_specification" {
+    for_each = var.dependency_instance_type == "t3.large" ? [1] : []
+    content {
+      cpu_credits = "standard"
+    }
   }
 
   user_data_replace_on_change = true

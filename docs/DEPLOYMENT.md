@@ -33,7 +33,7 @@ docker compose --project-name auctionhouse-rollback-test -f compose.app.yaml dow
 
 ## Optional telemetry in the image
 
-The image includes checksum-verified OpenTelemetry Java agent 2.31.1 at `/opt/otel/opentelemetry-javaagent.jar` and `observability/agent.properties`. Instrumentation is off by default. Enable it with `AUCTIONHOUSE_OTEL_ENABLED=true` and an explicit private `OTEL_EXPORTER_OTLP_ENDPOINT` (for example the collector service's `http://collector:4318` on a private Docker network). The entrypoint refuses opt-in startup without an endpoint. No collector port is exposed by the release fixture. The migration command does not start the agent. Agent configuration avoids capturing HTTP headers and sanitizes SQL; see the observability documentation for the measured tracing path and resource profile.
+The image includes checksum-verified OpenTelemetry Java agent 2.32.0 at `/opt/otel/opentelemetry-javaagent.jar` and `observability/agent.properties`. Instrumentation is off by default. Enable it with `AUCTIONHOUSE_OTEL_ENABLED=true` and an explicit private `OTEL_EXPORTER_OTLP_ENDPOINT` (for example the collector service's `http://collector:4318` on a private Docker network). The entrypoint refuses opt-in startup without an endpoint. No collector port is exposed by the release fixture. The migration command does not start the agent. Agent configuration avoids capturing HTTP headers and sanitizes SQL; see the observability documentation for the measured tracing path and resource profile.
 
 ## AWS project prerequisites
 

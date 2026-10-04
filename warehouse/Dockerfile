@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+FROM python:3.13.16-slim-trixie@sha256:3dd7cc108ec1493442514f5c2a871af6af0ec31d768ff6e378a93340c3b3db5f
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="auctionhouse-warehouse" org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update \

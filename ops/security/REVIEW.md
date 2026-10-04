@@ -1,11 +1,41 @@
-# Image review: 1 October 2026
+# Image review: 5 October 2026
 
 **Release image publication remains blocked by the vulnerability policy.**
-The `bd78f33` verification completed functional checks and all image scans;
-112 High package/advisory matches remain, including two in the telemetry agent.
+The `bd78f33` verification completed functional checks and all image scans on
+1 October and reported 112 High package/advisory matches, including two in
+the telemetry agent. Those counts apply to those images. The supported patch
+updates below have not yet had a complete rebuilt-image scan.
 The earlier thin verification pass is historical. There are no project suppressions or
 accepted-risk exceptions. These are build and scan results, not a deployment
 or an AWS scan.
+
+## Supported dependency updates on 5 October
+
+The official [telemetry agent 2.32.0 release](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/tag/v2.32.0)
+is now pinned consistently in the image, fetch/run helpers, profiling workflow
+and supplementary scanner. The downloaded JAR SHA256 is
+`f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82`;
+the official SBOM ZIP SHA256 is
+`162d909edaa5e0e45dfad27ae6e6ddb1c9709fccdcbe6dbb7ebdab4e23183c76`.
+Both match the release asset bytes, sizes and published digests. The official
+93-component inventory declares Jackson databind and core 2.22.3. Shaded
+libraries were not modified independently. A bounded Boot 4.1.1/Micrometer
+probe with the new agent preserved the 20 acquisition histogram boundaries
+and all 500 known observation counts.
+
+The official `python:3.13.16-slim-trixie` image is now available. Its checked
+index digest is `sha256:3dd7cc108ec1493442514f5c2a871af6af0ec31d768ff6e378a93340c3b3db5f`;
+its Linux AMD64 manifest is `sha256:b92e6b9bb1ea9d826e9956fd8d30bf18bc384c130231d74fdf0ba3460c290b0b`.
+The manifest/config hash chain and `PYTHON_VERSION=3.13.16` were verified.
+The warehouse base and CI runtime pins use that maintenance release, which
+[Python documents](https://www.python.org/downloads/release/python-31316/)
+as containing security fixes.
+
+The local Docker daemon was unavailable during this update. Agent binding and
+command-contract checks do not substitute for updated warehouse execution or
+complete application/gateway/warehouse image builds and scans. Remaining OS
+findings still need review against the actual rebuilt images and fresh database.
+No severity rule, ignore list, exception or release acceptance changed.
 
 ## Completed rebuilt-image scan at `bd78f33`
 
@@ -187,7 +217,7 @@ This is a version/source adjudication conflict, not a conclusion that the
 compiled image is universally safe. No exception has been added: both zlib
 matches remain blocking until the conflicting classification is resolved.
 
-Remaining prerequisites include:
+Prerequisites recorded at the 1 October review included:
 
 | Component | Evidence and required next step |
 | --- | --- |

@@ -17,6 +17,8 @@ state_backend_key = "auctionhouse/demo-01/full/terraform.tfstate"
 application_host_count = 1
 instance_type = "t3.small"
 dependency_instance_type = "t3.large"
+# For eligible Free-plan accounts, explicitly select "m7i-flex.large" after
+# checking regional availability, the revised estimate and EC2 vCPU quota.
 db_instance_class = "db.t4g.micro"
 application_pool_size = 8
 gateway_events = false

@@ -236,10 +236,11 @@ variable "application_pool_size" {
 
 variable "dependency_instance_type" {
 
-  type    = string
-  default = "t3.large"
+  description = "Explicitly reviewed 8GiB x86 support host; select m7i-flex.large for eligible Free-plan accounts."
+  type        = string
+  default     = "t3.large"
   validation {
-    condition     = var.dependency_instance_type == "t3.large"
+    condition     = contains(["t3.large", "m7i-flex.large"], var.dependency_instance_type)
     error_message = "The full fixture requires the explicitly costed 8GiB x86 dependency host."
   }
 

@@ -1,7 +1,7 @@
 param([string]$Directory=(Join-Path $PSScriptRoot '../build/telemetry'))
 $ErrorActionPreference='Stop'
-$version='2.31.1'
-$expected='bbf83c151b6400709e2f225bdd07a04f839d9d13b8b93464241333fd25d3e3ba'
+$version='2.32.0'
+$expected='f787eb6c7f3d18e69a431e108a15278d25ee37f83d68b678f621e063f3988f82'
 New-Item -ItemType Directory -Path $Directory -Force | Out-Null
 $target=Join-Path ([System.IO.Path]::GetFullPath($Directory)) "opentelemetry-javaagent-$version.jar"
 if(!(Test-Path -LiteralPath $target)) {
