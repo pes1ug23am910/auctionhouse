@@ -39,6 +39,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--profile', default='auctionhouse')
 for name in ['region','account-id','session','expires-at','master-secret-arn','db-host','ca-file','issuer','client-id']:
     parser.add_argument('--'+name, required=True)
+parser.add_argument('--master-secret-env', help='Read master JSON from this environment variable instead of Secrets Manager; consume it before starting child processes')
 parser.add_argument('--tunnel-port', type=int, default=15432)
 parser.add_argument('--namespace', choices=['thin', 'full'], default='thin', help='Keep full-stack SSM parameters separate from thin deployment credentials')
 options=parser.parse_args()
@@ -46,10 +47,18 @@ if os.name != 'posix':
     raise SystemExit('Use a private Linux/WSL operator shell; stdin secret transfer requires /dev/stdin')
 if not options.issuer.startswith('https://'):
     raise SystemExit('Cloud OIDC issuer must use HTTPS')
-if aws('sts','get-caller-identity')['Account'] != options.account_id:
-    raise SystemExit('AWS project identity mismatch')
 try:
-    master=json.loads(aws('secretsmanager','get-secret-value','--secret-id',options.master_secret_arn)['SecretString'])
+    # Consume external input before any child process can inherit the master JSON.
+    supplied_master = os.environ.pop(options.master_secret_env) if options.master_secret_env is not None else None
+    if aws('sts','get-caller-identity')['Account'] != options.account_id:
+        raise SystemExit('AWS project identity mismatch')
+    master = json.loads(supplied_master if options.master_secret_env is not None else
+                        aws('secretsmanager','get-secret-value','--secret-id',options.master_secret_arn)['SecretString'])
+    if not isinstance(master, dict) or not all(
+        isinstance(master.get(key), str) and master[key] and '\x00' not in master[key]
+        and '{{resolve:secretsmanager:' not in master[key] for key in ['username', 'password']
+    ):
+        raise ValueError('Invalid master credential input')
     prefix='/auctionhouse/'+options.session+('/full' if options.namespace == 'full' else '')
     migration=parameter(prefix+'/migration', secrets.token_urlsafe(32))
     runtime=json.loads(parameter(prefix+'/runtime',json.dumps({

@@ -100,6 +100,16 @@ python3 ops/cloud/bootstrap-database.py --profile auctionhouse \
   --db-host RDS_HOST --ca-file REGION_CA.pem --issuer https://ISSUER --client-id PUBLIC_PKCE_CLIENT
 ```
 
+Both database bootstrap commands also accept `--master-secret-env VARIABLE_NAME`
+for a runtime credential provider that supplies the master secret as JSON with
+nonempty `username` and `password` strings. The explicit option consumes and
+removes that variable before any AWS subprocess starts; missing, malformed or
+unresolved input fails without falling back to Secrets Manager. The expected
+AWS account check still runs before staging parameters or changing the database.
+Pass only the variable name on the command line, disable shell tracing, and never
+print its value. The master password reaches `psql` only through its child
+environment. Omitting the option preserves the normal operator retrieval path.
+
 The bootstrap creates `ah_migrator` (schema ownership) and `ah_runtime` (DML/sequence use, no schema creation). It stages generated secrets as Standard SSM SecureString parameters `/auctionhouse/SESSION/migration` and `/auctionhouse/SESSION/runtime`; retry reuses the staged values. Runtime is a small explicit JSON allowlist containing the DB password and OIDC client/provider fields. No password appears in argv, source, log output or Terraform state. The deployment host reads only those two exact parameters. The migration command revokes runtime access to Flyway history after applying migrations.
 
 Runtime credentials are mounted only into the app; migration credentials are mounted only into a short-lived migration container. Host root/deployment remains a privileged boundary. Runtime secret files use a tmpfs path, UID 10001 and mode 0400. Do not enable shell tracing or dump Docker inspection output/environment in evidence. Rotate credentials through a separately reviewed coordinated procedure; the one-time bootstrap does not silently rotate existing secrets.
